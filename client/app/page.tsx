@@ -5,6 +5,8 @@ import { HeroPage } from "@/components/custom/HeroPage";
 import { SpiralIntro } from "@/components/custom/SpiralIntro";
 import { useState, useEffect } from 'react';
 
+// Lenis will be dynamically imported on the client to enable smooth scrolling
+
 export default function Home() {
   const [showIntro, setShowIntro] = useState(true);
   const [hasVisited, setHasVisited] = useState(false);
@@ -38,4 +40,49 @@ export default function Home() {
       <HeroPage />
     </div>
   );
+}
+
+// Initialize Lenis for smooth scrolling on the home page. We use a dynamic
+// import inside a useEffect so this runs only on the client and doesn't break
+// server-side rendering.
+export function useLenis() {
+  useEffect(() => {
+    let rafId: number | null = null;
+    let lenisInstance: any = null;
+
+    (async () => {
+      try {
+        const LenisModule = await import('lenis');
+        const Lenis = LenisModule?.default ?? LenisModule;
+
+        lenisInstance = new Lenis({
+          duration: 1.2,
+          easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+          smooth: true,
+        });
+
+        function raf(time: number) {
+          if (lenisInstance) lenisInstance.raf(time);
+          rafId = requestAnimationFrame(raf);
+        }
+
+        rafId = requestAnimationFrame(raf);
+      } catch (err) {
+        // If lenis isn't installed or fails to initialize, silently fail and
+        // keep the native scroll behavior.
+        console.warn('Lenis failed to initialize:', err);
+      }
+    })();
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      try {
+        if (lenisInstance && typeof lenisInstance.destroy === 'function') {
+          lenisInstance.destroy();
+        }
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    };
+  }, []);
 }
