@@ -116,6 +116,7 @@ function PaymentSuccessContent() {
   const currency = searchParams.get('currency') || 'INR';
   const points = searchParams.get('points') || '0';
   const walletAddress = searchParams.get('wallet') || '';
+  const paymentMethod = searchParams.get('method') || 'aptos'; // Default to aptos for backward compatibility
   
   const formatCurrency = (amount: string, currency: string) => {
     return currency === 'INR' ? `₹${amount}` : `$${amount}`;
@@ -251,19 +252,21 @@ function PaymentSuccessContent() {
 
                 {/* Action Buttons */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8">
-                  <a 
-                    href={`https://explorer.aptoslabs.com/txn/${txnHash}?network=devnet`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="aptos-link flex items-center justify-center gap-2 text-white font-medium py-3 px-4"
-                  >
-                    View on Aptos Explorer
-                    <IconExternalLink className="h-4 w-4" />
-                  </a>
+                  {paymentMethod === 'aptos' && (
+                    <a 
+                      href={`https://explorer.aptoslabs.com/txn/${txnHash}?network=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="aptos-link flex items-center justify-center gap-2 text-white font-medium py-3 px-4"
+                    >
+                      View on Aptos Explorer
+                      <IconExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
                   
                   <button 
                     onClick={() => router.push('/dashboard')}
-                    className="dashboard-button flex items-center justify-center gap-2 text-white font-medium py-3 px-4"
+                    className={`dashboard-button flex items-center justify-center gap-2 text-white font-medium py-3 px-4 ${paymentMethod === 'aptos' ? '' : 'col-span-2'}`}
                   >
                     Go to Dashboard
                     <IconDashboard className="h-4 w-4" />

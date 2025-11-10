@@ -587,12 +587,12 @@ function ConfirmPageContent(): React.ReactElement {
             // Show toast notification
             toast.success(`Payment successful! Your ${planName} is now active.`);
             
-            // Define the redirect to success page function
-            const redirectToSuccessPage = () => {
-              router.push(`/payment-success?txn=${txnHash}&plan=${encodeURIComponent(planName)}&amount=${currentPrice}&currency=${currentCurrency}&points=${gyanPoints}&wallet=${connectedWallet.address}`);
-            };
+            // Redirect to success page
+            setTimeout(() => {
+              router.push(`/payment-success?txn=${txnHash}&plan=${encodeURIComponent(planName)}&amount=${currentPrice}&currency=${currentCurrency}&points=${gyanPoints}&wallet=${connectedWallet.address}&method=aptos`);
+            }, 2000);
             
-            return { success: true, txnHash, redirectToSuccessPage };
+            return { success: true, txnHash };
           } catch (error) {
             console.error("Error processing Aptos payment:", error);
             setDialogMode('error');
@@ -612,11 +612,153 @@ function ConfirmPageContent(): React.ReactElement {
     
     // Razorpay payment flow
     setLoading(true);
-    // Simulate payment processing for Razorpay
-    setTimeout(() => {
+    setError(null);
+    
+    try {
+      // Get current plan and price
+      const currentPrice = getCurrentPrice();
+      const planName = planData?.name || 'Default Plan';
+      const planId = planData?.name?.toLowerCase().replace(/\s+/g, '_') || 'default_plan';
+      
+      // Get userId from Firebase
+      const firebaseUserId = localStorage.getItem('firebaseUserId');
+      if (!firebaseUserId) {
+        throw new Error('Please log in to continue with payment');
+      }
+      
+      // Calculate Gyan points based on plan
+      const gyanPoints = getGyanPointsForPlan(planId);
+      
+      console.log('Creating Razorpay order:', { amount: currentPrice, currency: currentCurrency, planId });
+      
+      // Step 1: Create order on server
+      const orderResponse = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: currentPrice,
+          currency: currentCurrency,
+          receipt: `receipt_${Date.now()}`,
+          notes: {
+            planId,
+            planName,
+            userId: firebaseUserId,
+            gyanPoints,
+          },
+        }),
+      });
+      
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        throw new Error(errorData.error || 'Failed to create order');
+      }
+      
+      const orderData = await orderResponse.json();
+      console.log('Razorpay order created:', orderData.orderId);
+      
+      // Step 2: Initialize Razorpay Checkout
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'Adhyayan AI',
+        description: `${planName} - ${gyanPoints} Gyan Points`,
+        order_id: orderData.orderId,
+        handler: async function (response: any) {
+          try {
+            console.log('Payment successful, verifying...', response);
+            
+            // Step 3: Verify payment signature
+            const verifyResponse = await fetch('/api/razorpay/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                userId: firebaseUserId,
+                planId,
+                amount: currentPrice,
+                currency: currentCurrency,
+              }),
+            });
+            
+            if (!verifyResponse.ok) {
+              const errorData = await verifyResponse.json();
+              throw new Error(errorData.error || 'Payment verification failed');
+            }
+            
+            const verifyData = await verifyResponse.json();
+            console.log('Payment verified successfully:', verifyData);
+            
+            // Show success message
+            toast.success(`Payment successful! ${gyanPoints} Gyan Points added to your account.`);
+            
+            // Trigger payment success event for components to refresh
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('paymentSuccess', { 
+                detail: { txnHash: response.razorpay_payment_id } 
+              }));
+            }
+            
+            // Redirect to success page
+            setTimeout(() => {
+              router.push(`/payment-success?txn=${response.razorpay_payment_id}&plan=${encodeURIComponent(planName)}&amount=${currentPrice}&currency=${currentCurrency}&points=${gyanPoints}&method=razorpay`);
+            }, 1500);
+            
+          } catch (error) {
+            console.error('Payment verification error:', error);
+            toast.error(error instanceof Error ? error.message : 'Payment verification failed');
+            setError(error instanceof Error ? error.message : 'Payment verification failed');
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: localStorage.getItem('userName') || '',
+          email: localStorage.getItem('userEmail') || '',
+        },
+        theme: {
+          color: '#975af4',
+        },
+        modal: {
+          ondismiss: function() {
+            console.log('Payment cancelled by user');
+            setLoading(false);
+            toast.error('Payment cancelled');
+          }
+        }
+      };
+      
+      // Load Razorpay script if not already loaded
+      if (!(window as any).Razorpay) {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => {
+          const rzp = new (window as any).Razorpay(options);
+          rzp.open();
+        };
+        script.onerror = () => {
+          setLoading(false);
+          toast.error('Failed to load Razorpay. Please try again.');
+        };
+        document.body.appendChild(script);
+      } else {
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      }
+      
+    } catch (error) {
+      console.error('Razorpay payment error:', error);
+      toast.error(error instanceof Error ? error.message : 'Payment failed');
+      setError(error instanceof Error ? error.message : 'Payment failed');
       setLoading(false);
-      toast(`Payment with ${method} will be implemented soon! Selected: ${planData?.name}`);
-    }, 2000);
+    }
   };
   
   // Handler for payment dialog confirmation
@@ -627,12 +769,8 @@ function ConfirmPageContent(): React.ReactElement {
       // Clear the function reference after using it
       window.processPaymentFunction = undefined;
       
-      if (result.success && result.redirectToSuccessPage) {
-        // Let the success dialog show for a moment before redirecting
-        setTimeout(() => {
-          result.redirectToSuccessPage!();
-        }, 2000);
-      }
+      // The redirect is already handled inside processPayment function
+      // No need to check for redirectToSuccessPage here
     }
   };  // Handle successful Civic wallet connection specially for the Aptos payment flow
   const handleWalletConnectSuccess = useCallback((walletData: any) => {
