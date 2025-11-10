@@ -2,6 +2,12 @@ import { createCivicAuthPlugin } from "@civic/auth-web3/nextjs"
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Enable SWC styled-components support to ensure stable class names between
+  // server and client rendering and avoid hydration mismatches when using
+  // styled-components.
+  compiler: {
+    styledComponents: true,
+  },
   eslint: {
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors.
