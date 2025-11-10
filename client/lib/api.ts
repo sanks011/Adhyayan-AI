@@ -270,6 +270,36 @@ class ApiService {
     }
   }
   async getMindMap(id: string) {
+    // Check if this is a local mind map (format: mindmap_timestamp_random or just timestamp_random)
+    const isLocalMindMap = id.startsWith('mindmap_') || !/^[0-9a-fA-F]{24}$/.test(id);
+    
+    if (isLocalMindMap) {
+      // For local mind maps, try to load from localStorage
+      const localKey = id.startsWith('mindmap_') ? id : `mindmap_${id}`;
+      const localData = typeof window !== 'undefined' ? localStorage.getItem(localKey) : null;
+      
+      if (localData) {
+        try {
+          const parsedData = JSON.parse(localData);
+          return {
+            success: true,
+            mindMap: parsedData
+          };
+        } catch (error) {
+          console.error('Error parsing local mind map data:', error);
+          return {
+            success: false,
+            error: 'Failed to parse local mind map data'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          error: 'Local mind map not found'
+        };
+      }
+    }
+    
     // Extract the MongoDB ObjectId if it's in the format ObjectId('id')
     let mongoId = id;
     const objectIdMatch = id.match(/ObjectId\('([0-9a-fA-F]{24})'\)/);
@@ -277,6 +307,8 @@ class ApiService {
       mongoId = objectIdMatch[1];
       console.log(`Extracted MongoDB ID ${mongoId} from ${id}`);
     }
+    
+    // For server mind maps, fetch from API
     return this.get(`/mindmap/${mongoId}`);
   }
   
