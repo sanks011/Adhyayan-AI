@@ -380,6 +380,13 @@ const nodeTypes = {
 export default function MindMapView() {  const router = useRouter();
   const { user, loading, isAuthenticated, logout } = useAuth();
 
+  // Handle authentication redirect in useEffect instead of during render
+  useEffect(() => {
+    if (!loading && (!isAuthenticated || !user)) {
+      router.push('/');
+    }
+  }, [loading, isAuthenticated, user, router]);
+
   if (loading) {    
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -389,7 +396,6 @@ export default function MindMapView() {  const router = useRouter();
   }
 
   if (!isAuthenticated || !user) {
-    router.push('/');
     return null;
   }
   

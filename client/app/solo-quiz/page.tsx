@@ -138,6 +138,7 @@ function QuizGameContent() {
   
   // History state
   const [quizHistory, setQuizHistory] = useState<QuizHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Check URL parameters for direct quiz start
   useEffect(() => {
@@ -453,8 +454,14 @@ function QuizGameContent() {
     );
   }
 
+  // Handle authentication redirect in useEffect instead of during render
+  useEffect(() => {
+    if (!loading && (!isAuthenticated || !user)) {
+      router.push('/');
+    }
+  }, [loading, isAuthenticated, user, router]);
+
   if (!isAuthenticated || !user) {
-    router.push('/');
     return null;
   }
 

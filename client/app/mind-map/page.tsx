@@ -458,6 +458,13 @@ Use the quiz feature to test your understanding and the AI chat to ask specific 
       console.error('Error signing out:', error);
     }
   };
+  // Handle authentication redirect in useEffect instead of during render
+  useEffect(() => {
+    if (!loading && (!isAuthenticated || !user)) {
+      router.push('/');
+    }
+  }, [loading, isAuthenticated, user, router]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -467,7 +474,6 @@ Use the quiz feature to test your understanding and the AI chat to ask specific 
   }
 
   if (!isAuthenticated || !user) {
-    router.push('/');
     return null;
   }  const dockLinks = [
     {

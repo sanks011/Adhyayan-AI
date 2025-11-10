@@ -810,7 +810,7 @@ app.get("/api/mindmap/:id", verifyToken, checkDbConnection, async (req, res) => 
     res.json({
       success: true,
       mindMap: {
-        id: mindMap._id,
+        id: String(mindMap._id),
         title: mindMap.title,
         data: mindMap.data,
         createdAt: mindMap.createdAt,
@@ -845,12 +845,16 @@ app.get("/api/mindmap/list", verifyToken, checkDbConnection, async (req, res) =>
 
     res.json({
       success: true,
-      mindMaps: mindMaps.map((map) => ({
-        id: map._id,
-        title: map.title,
-        createdAt: map.createdAt,
-        lastModified: map.lastModified,
-      })),
+      mindMaps: mindMaps.map((map) => {
+        const idString = String(map._id);
+        console.log(`Mind map ID: ${idString}, Type: ${typeof map._id}, Is valid hex: ${/^[0-9a-fA-F]{24}$/.test(idString)}`);
+        return {
+          id: idString,
+          title: map.title,
+          createdAt: map.createdAt,
+          lastModified: map.lastModified,
+        };
+      }),
     });
   } catch (error) {
     console.error("Error retrieving mind maps:", error.message);

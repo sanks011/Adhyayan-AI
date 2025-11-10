@@ -163,8 +163,14 @@ export default function JoinRoomPage({ params }: JoinRoomProps) {
     );
   }
 
+  // Handle authentication redirect in useEffect instead of during render
+  useEffect(() => {
+    if (!loading && (!isAuthenticated || !user)) {
+      router.push('/');
+    }
+  }, [loading, isAuthenticated, user, router]);
+
   if (!isAuthenticated || !user) {
-    router.push('/');
     return null;
   }
 
