@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiService } from '@/lib/api';
@@ -184,7 +184,7 @@ const moveNodeAndChildren = (nodes: Node[], nodeId: string, deltaX: number, delt
 };
 
 // Custom node component for expandable/collapsible behavior
-const CustomNode = ({ data, id }: NodeProps) => {
+const CustomNode = memo(({ data, id }: NodeProps): React.ReactElement => {
   const { setNodes, getNodes, setCenter, getZoom } = useReactFlow();
   const nodeData = data as CustomNodeData;
   
@@ -288,14 +288,14 @@ const CustomNode = ({ data, id }: NodeProps) => {
   return (
     <>
       {/* Expandable button for nodes with children */}
-      {data.hasChildren && (
+      {(data as CustomNodeData).hasChildren && (
         <div 
-          className="absolute -left-6 top-1/2 transform -translate-y-1/2 w-5 h-5 rounded-full bg-neutral-800 flex items-center justify-center cursor-pointer hover:bg-neutral-700 transition-colors"
+          className="nodrag absolute -left-6 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-neutral-800 flex items-center justify-center cursor-pointer hover:bg-neutral-700 transition-colors"
           onClick={toggleExpanded}
-          style={{ zIndex: 10 }}
-          title={data.expanded ? "Collapse" : "Expand"}
+          style={{ zIndex: 10, pointerEvents: 'all' }}
+          title={(data as CustomNodeData).expanded ? "Collapse" : "Expand"}
         >
-          {data.expanded ? (
+          {(data as CustomNodeData).expanded ? (
             <IconMinus className="h-3 w-3 text-white" />
           ) : (
             <IconPlus className="h-3 w-3 text-white" />
@@ -304,37 +304,51 @@ const CustomNode = ({ data, id }: NodeProps) => {
       )}
 
       {/* Expand button for leaf nodes (AI expansion) */}
-      {!data.hasChildren && data.canExpand && !nodeData.isRoot && (
+      {!(data as CustomNodeData).hasChildren && (data as CustomNodeData).canExpand && !nodeData.isRoot && (
         <div 
-          className="absolute -right-6 top-1/2 transform -translate-y-1/2 w-5 h-5 rounded-full bg-orange-600 hover:bg-orange-500 flex items-center justify-center cursor-pointer transition-colors"
+          className="nodrag absolute -right-6 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-orange-600 hover:bg-orange-500 flex items-center justify-center cursor-pointer transition-colors"
           onClick={handleExpandNode}
-          style={{ zIndex: 10 }}
+          style={{ zIndex: 10, pointerEvents: 'all' }}
           title="Deep dive into this topic (AI expansion)"
         >
-          {data.isExpanding ? (
+          {(data as CustomNodeData).isExpanding ? (
             <IconLoader2 className="h-3 w-3 text-white animate-spin" />
           ) : (
             <IconPlus className="h-3 w-3 text-white" />
           )}
         </div>
-      )}      {/* Main node container */}
+      )}
+
+      {/* Main node container */}
       <div 
         className={cn(
-          "px-4 py-2 min-w-32 rounded-md flex items-center justify-center border cursor-pointer",
+          "px-4 py-2 min-w-32 rounded-md flex items-center justify-center border",
           getBorderColor(),
           getBackgroundColor(),
           nodeData.isRoot ? "font-semibold" : "font-normal"
         )}
         onClick={handleNodeClick}
-        style={{
-          willChange: 'transform',
-        }}
+        style={{ cursor: 'grab', userSelect: 'none' }}
       >
+        {/* Connection points - inside the main node */}
+        <Handle 
+          type="target" 
+          position={Position.Left} 
+          className="w-1 h-1 border-0 bg-transparent" 
+          style={{ opacity: 0 }}
+        />
+        <Handle 
+          type="source" 
+          position={Position.Right} 
+          className="w-1 h-1 border-0 bg-transparent" 
+          style={{ opacity: 0 }}
+        />
+
         {/* Read status indicator/toggle button for non-root nodes - more subtle design */}
         {!nodeData.isRoot && (
           <div 
             className={cn(
-              "absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-1/4 w-3 h-3 rounded-full flex items-center justify-center cursor-pointer",
+              "nodrag absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/4 w-3 h-3 rounded-full flex items-center justify-center cursor-pointer",
               nodeData.isRead ? "bg-green-500" : "bg-neutral-700",
               "hover:opacity-80 transition-opacity border border-black"
             )}
@@ -343,7 +357,7 @@ const CustomNode = ({ data, id }: NodeProps) => {
               toggleReadStatus();
             }}
             title={nodeData.isRead ? "Mark as unread" : "Mark as read"}
-            style={{ zIndex: 5 }}
+            style={{ zIndex: 5, pointerEvents: 'all' }}
           >
             {nodeData.isRead && (
               <div className="h-1.5 w-1.5 bg-white rounded-full"></div>
@@ -351,25 +365,11 @@ const CustomNode = ({ data, id }: NodeProps) => {
           </div>
         )}
         
-        <div className="text-sm text-white">{nodeData.label}</div>
+        <div className="text-sm text-white" style={{ pointerEvents: 'none' }}>{nodeData.label}</div>
       </div>
-
-      {/* Connection points - making them nearly invisible */}
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        className="w-1 h-1 border-0 bg-transparent" 
-        style={{ opacity: 0 }}
-      />
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        className="w-1 h-1 border-0 bg-transparent" 
-        style={{ opacity: 0 }}
-      />
     </>
   );
-};
+});
 
 CustomNode.displayName = 'CustomNode';
 
@@ -1873,21 +1873,20 @@ More detailed content will be available soon with comprehensive explanations, eq
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Attach handlers to nodes in a separate effect to avoid recreating all nodes
-  useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          onToggleReadStatus: handleToggleReadStatus,
-          onNodeClick: handleNodeClick,
-        },
-      }))
-    );
-  }, [handleToggleReadStatus, handleNodeClick, setNodes]);
+  // Memoize ReactFlow props to prevent re-renders
+  const defaultEdgeOptions = useMemo(() => ({
+    type: 'bezier',
+    animated: false,
+    style: { strokeWidth: 1, stroke: '#333' },
+    markerEnd: undefined,
+    markerStart: undefined,
+    data: { curvature: 0.25 }
+  }), []);
 
-  // Function to handle AI expansion of leaf nodes
+  const connectionLineStyle = useMemo(() => ({ stroke: '#333', strokeWidth: 2 }), []);
+  const defaultViewport = useMemo(() => ({ x: 0, y: 0, zoom: 0.8 }), []);
+
+  // Function to handle AI expansion of leaf nodes (defined BEFORE useEffect that uses it)
   const handleExpandNode = useCallback(async (nodeId: string) => {
     if (expandingNodes.has(nodeId)) {
       console.log('Node is already being expanded:', nodeId);
@@ -2118,29 +2117,22 @@ More detailed content will be available soon with comprehensive explanations, eq
         return newSet;
       });    }
   }, [params?.id, expandingNodes, getNodes, nodeDescriptions, handleToggleReadStatus, handleNodeClick, setNodes, setEdges, setCenter, getZoom]);
-  // Effect to add expand handlers to nodes after handleExpandNode is defined
-  useEffect(() => {
-    setNodes(prevNodes => prevNodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        onExpandNode: node.data.canExpand ? handleExpandNode : undefined
-      }
-    })));
-  }, [handleExpandNode, setNodes]);
 
-  // Effect to ensure expand handlers are attached when nodes are loaded from localStorage/API
+  // Attach handlers to nodes - runs after handleExpandNode is defined
   useEffect(() => {
-    if (!isLoading && nodes.length > 0) {
-      setNodes(prevNodes => prevNodes.map(node => ({
+    setNodes((nds) =>
+      nds.map((node) => ({
         ...node,
         data: {
           ...node.data,
-          onExpandNode: node.data.canExpand ? handleExpandNode : undefined
-        }
-      })));
-    }
-  }, [isLoading, nodes.length, handleExpandNode, setNodes]);
+          onToggleReadStatus: handleToggleReadStatus,
+          onNodeClick: handleNodeClick,
+          onExpandNode: node.data.canExpand ? handleExpandNode : undefined,
+          isSelected: selectedNode === node.id,
+        },
+      }))
+    );
+  }, [selectedNode]); // Only update when selection changes
 
   // Handle edge connections
   const onConnect = useCallback(
@@ -2158,31 +2150,38 @@ More detailed content will be available soon with comprehensive explanations, eq
       }, eds));
     },
     [setEdges]
-  );  // Sync the expanded topics and selected node between sidebar and mind map visualization
+  );  // Sync expanded topics state (but don't update all nodes during drag)
   useEffect(() => {
-    // Update node expansion state and selection based on expandedTopics and selectedNode
     setNodes(nds => nds.map(node => {
-      let updatedNode = { ...node };
-      // Update selection state
-      updatedNode.data = { 
-        ...updatedNode.data, 
-        isSelected: selectedNode === node.id,
-        onNodeClick: handleNodeClick
-      };
-      
-      // Update expansion state
-      if (expandedTopics.includes(node.id)) {
-        updatedNode.data = { ...updatedNode.data, expanded: true };
-      }
-      // Show/hide nodes based on parent expansion
       const nodeData = node.data as CustomNodeData;
-      if (nodeData.parentNode && expandedTopics.includes(nodeData.parentNode)) {
-        updatedNode.hidden = false;
+      let hasChanges = false;
+      let updates: any = {};
+      
+      // Only update if expansion state actually changed
+      if (expandedTopics.includes(node.id) && !nodeData.expanded) {
+        updates.expanded = true;
+        hasChanges = true;
       }
       
-      return updatedNode;
+      // Only update visibility if parent expansion changed
+      const shouldBeHidden = nodeData.parentNode ? !expandedTopics.includes(nodeData.parentNode) : false;
+      if (node.hidden !== shouldBeHidden) {
+        hasChanges = true;
+      }
+      
+      // Only update node if something actually changed
+      if (hasChanges) {
+        return {
+          ...node,
+          data: { ...node.data, ...updates },
+          hidden: shouldBeHidden
+        };
+      }
+      
+      return node;
     }));
-  }, [expandedTopics, selectedNode, setNodes, handleNodeClick]);
+  }, [expandedTopics]); // Only when expansion changes, not selection
+  
   const handleSignOut = async () => {
     try {
       await logout();
@@ -2283,24 +2282,15 @@ More detailed content will be available soon with comprehensive explanations, eq
               nodesDraggable={true}
               zoomOnScroll={true}
               panOnScroll={true}
-              // Enable smooth animations
-              connectionLineStyle={{ stroke: '#333', strokeWidth: 2 }}
-              defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+              connectionLineStyle={connectionLineStyle}
+              defaultViewport={defaultViewport}
               minZoom={0.2}
               maxZoom={2}
               snapToGrid={false}
-              // Add animation duration for smoother transitions
               deleteKeyCode="Delete"
               selectionKeyCode="Shift"
               multiSelectionKeyCode="Meta"
-              defaultEdgeOptions={{
-                type: 'bezier',
-                animated: false,
-                style: { strokeWidth: 1, stroke: '#333' },
-                markerEnd: undefined,
-                markerStart: undefined,
-                data: { curvature: 0.25 }
-              }}
+              defaultEdgeOptions={defaultEdgeOptions}
             >
               <Controls className="bg-neutral-800 text-white border-neutral-700" />
               <Background color="#333" gap={16} size={1} />
