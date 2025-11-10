@@ -21,11 +21,21 @@ interface MindMapTopic {
   id: string;
   title: string;
   isRead: boolean;
-  subtopics: {
-    id: string;
-    title: string;
-    isRead: boolean;
-  }[];
+  subtopics: MindMapSubtopic[];
+}
+
+interface MindMapSubtopic {
+  id: string;
+  title: string;
+  isRead: boolean;
+  subtopics?: MindMapSubtopic[]; // Recursive nesting for AI-expanded nodes
+}
+
+interface MindMapSubtopic {
+  id: string;
+  title: string;
+  isRead: boolean;
+  subtopics?: MindMapSubtopic[]; // Recursive nesting for AI-expanded nodes
 }
 
 interface MindMapSidebarProps {
@@ -35,6 +45,125 @@ interface MindMapSidebarProps {
   onSubtopicSelect?: (topicId: string, subtopicId: string) => void;
   onToggleReadStatus?: (nodeId: string, isRead: boolean) => void;
 }
+
+// Recursive component for rendering subtopics at any depth
+const SubtopicRenderer: React.FC<{
+  subtopic: MindMapSubtopic;
+  parentId: string;
+  open: boolean;
+  expandedTopics: string[];
+  toggleTopic: (id: string) => void;
+  onSubtopicSelect?: (topicId: string, subtopicId: string) => void;
+  onToggleReadStatus?: (nodeId: string, isRead: boolean) => void;
+  depth: number;
+}> = ({ 
+  subtopic, 
+  parentId, 
+  open, 
+  expandedTopics, 
+  toggleTopic, 
+  onSubtopicSelect, 
+  onToggleReadStatus,
+  depth 
+}) => {
+  const hasChildren = subtopic.subtopics && subtopic.subtopics.length > 0;
+  const isExpanded = expandedTopics.includes(subtopic.id);
+  
+  return (
+    <div className={cn(
+      "relative",
+      !open && "flex flex-col items-center w-full"
+    )}>
+      {/* Connection line to parent - only show when sidebar is open */}
+      {open && (
+        <div className="absolute -left-4 top-3 w-3 h-px bg-neutral-200 dark:border-neutral-700"></div>
+      )}
+      <div className="relative w-full">
+        <SidebarLink
+          link={{
+            label: subtopic.title,
+            href: "#",
+            icon: hasChildren ? (
+              isExpanded ? (
+                <IconChevronDown className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
+              ) : (
+                <IconChevronRight className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
+              )
+            ) : null,
+          }}
+          className={cn(
+            "text-sm",
+            open 
+              ? "py-2 pl-2 pr-8 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              : "py-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700"
+          )}
+          onClick={() => {
+            if (hasChildren) {
+              toggleTopic(subtopic.id);
+            }
+            onSubtopicSelect?.(parentId, subtopic.id);
+          }}
+          sidebarOpen={open}
+        />
+        
+        {/* Read status toggle button for subtopic */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleReadStatus?.(subtopic.id, !subtopic.isRead);
+          }}
+          className={cn(
+            "transform transition-all duration-200",
+            "flex items-center justify-center hover:scale-110",
+            open 
+              ? "absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2"
+              : "mx-auto w-3 h-3 rounded-full border-[1.5px] mt-1",
+            subtopic.isRead 
+              ? "bg-green-500 border-green-500" 
+              : "bg-transparent border-neutral-400 hover:border-neutral-300"
+          )}
+          title={subtopic.isRead ? "Mark as unread" : "Mark as read"}
+        >
+          {subtopic.isRead && (
+            <IconCheck className={cn(
+              "text-white",
+              open ? "w-2.5 h-2.5" : "w-2 h-2"
+            )} />
+          )}
+        </button>
+      </div>
+      
+      {/* Recursively render nested subtopics */}
+      {hasChildren && isExpanded && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2 }}
+          className={cn(
+            open 
+              ? "ml-6 border-l-2 border-neutral-200 dark:border-neutral-700 pl-4 space-y-1 mt-2"
+              : "space-y-1 mt-2 flex flex-col items-center"
+          )}
+        >
+          {subtopic.subtopics!.map((nestedSubtopic) => (
+            <SubtopicRenderer
+              key={nestedSubtopic.id}
+              subtopic={nestedSubtopic}
+              parentId={parentId}
+              open={open}
+              expandedTopics={expandedTopics}
+              toggleTopic={toggleTopic}
+              onSubtopicSelect={onSubtopicSelect}
+              onToggleReadStatus={onToggleReadStatus}
+              depth={depth + 1}
+            />
+          ))}
+        </motion.div>
+      )}
+    </div>
+  );
+};
 
 export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
   className,
@@ -79,15 +208,27 @@ export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
     let totalItems = 0;
     let completedItems = 0;
 
+    // Recursive function to count subtopics at any depth
+    const countSubtopics = (subtopics: MindMapSubtopic[]) => {
+      subtopics.forEach(subtopic => {
+        totalItems += 1;
+        if (subtopic.isRead) completedItems += 1;
+        
+        // Recursively count nested subtopics
+        if (subtopic.subtopics && subtopic.subtopics.length > 0) {
+          countSubtopics(subtopic.subtopics);
+        }
+      });
+    };
+
     mindMapData.forEach(topic => {
       if (topic.subtopics.length === 0) {
         // Topic without subtopics
         totalItems += 1;
         if (topic.isRead) completedItems += 1;
       } else {
-        // Topic with subtopics - count subtopics
-        totalItems += topic.subtopics.length;
-        completedItems += topic.subtopics.filter(sub => sub.isRead).length;
+        // Topic with subtopics - count all nested subtopics recursively
+        countSubtopics(topic.subtopics);
       }
     });
 
@@ -177,58 +318,17 @@ export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
                         )}
                       >
                         {topic.subtopics.map((subtopic) => (
-                          <div key={subtopic.id} className={cn(
-                            "relative",
-                            !open && "flex flex-col items-center w-full"
-                          )}>
-                            {/* Connection line to parent - only show when sidebar is open */}
-                            {open && (
-                              <div className="absolute -left-4 top-3 w-3 h-px bg-neutral-200 dark:border-neutral-700"></div>
-                            )}
-                            <div className="relative w-full">
-                              <SidebarLink
-                                link={{
-                                  label: subtopic.title,
-                                  href: "#",
-                                  icon: null,
-                                }}
-                                className={cn(
-                                  "text-sm",
-                                  open 
-                                    ? "py-2 pl-2 pr-8 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800" // Add pr-8 when open
-                                    : "py-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                                )}
-                                onClick={() => onSubtopicSelect?.(topic.id, subtopic.id)}
-                                sidebarOpen={open}
-                              />
-                              
-                              {/* Read status toggle button for subtopic */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onToggleReadStatus?.(subtopic.id, !subtopic.isRead);
-                                }}
-                                className={cn(
-                                  "transform transition-all duration-200",
-                                  "flex items-center justify-center hover:scale-110",
-                                  open 
-                                    ? "absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2"
-                                    : "mx-auto w-3 h-3 rounded-full border-[1.5px] mt-1",
-                                  subtopic.isRead 
-                                    ? "bg-green-500 border-green-500" 
-                                    : "bg-transparent border-neutral-400 hover:border-neutral-300"
-                                )}
-                                title={subtopic.isRead ? "Mark as unread" : "Mark as read"}
-                              >
-                                {subtopic.isRead && (
-                                  <IconCheck className={cn(
-                                    "text-white",
-                                    open ? "w-2.5 h-2.5" : "w-2 h-2"
-                                  )} />
-                                )}
-                              </button>
-                            </div>
-                          </div>
+                          <SubtopicRenderer
+                            key={subtopic.id}
+                            subtopic={subtopic}
+                            parentId={topic.id}
+                            open={open}
+                            expandedTopics={expandedTopics}
+                            toggleTopic={toggleTopic}
+                            onSubtopicSelect={onSubtopicSelect}
+                            onToggleReadStatus={onToggleReadStatus}
+                            depth={1}
+                          />
                         ))}
                       </motion.div>
                     )}

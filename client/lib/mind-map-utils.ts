@@ -13,6 +13,7 @@ export interface SidebarSubtopic {
   title: string;
   isRead: boolean;
   level?: number;
+  subtopics?: SidebarSubtopic[]; // Recursive nesting for AI-expanded nodes
 }
 
 export interface BackendNode {
@@ -75,8 +76,8 @@ export function convertBackendDataToSidebarFormat(backendData: BackendData): Sid
     
     // Convert main topics to sidebar format
     const sidebarTopics: SidebarTopic[] = mainTopics.map(topic => {
-      // Find subtopics for this main topic
-      const subtopics = findSubtopics(backendData.nodes, topic, backendData.edges);
+      // Find subtopics for this main topic - with guard for undefined nodes
+      const subtopics = findSubtopics(backendData.nodes || [], topic, backendData.edges);
       
       return {
         id: topic.id,

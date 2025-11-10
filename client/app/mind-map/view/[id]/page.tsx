@@ -187,7 +187,8 @@ const moveNodeAndChildren = (nodes: Node[], nodeId: string, deltaX: number, delt
 const CustomNode = ({ data, id }: NodeProps) => {
   const { setNodes, getNodes, setCenter, getZoom } = useReactFlow();
   const nodeData = data as CustomNodeData;
-    // Function to handle expand/collapse with dynamic repositioning
+  
+  // Function to handle expand/collapse with dynamic repositioning
   const toggleExpanded = useCallback(() => {
     const targetNodeId = id;
     
@@ -320,15 +321,13 @@ const CustomNode = ({ data, id }: NodeProps) => {
       <div 
         className={cn(
           "px-4 py-2 min-w-32 rounded-md flex items-center justify-center border cursor-pointer",
-          "transition-all duration-500 ease-in-out", // Add smooth animation for all transitions
           getBorderColor(),
           getBackgroundColor(),
           nodeData.isRoot ? "font-semibold" : "font-normal"
         )}
         onClick={handleNodeClick}
         style={{
-          // Add CSS transform for smooth position transitions
-          transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+          willChange: 'transform',
         }}
       >
         {/* Read status indicator/toggle button for non-root nodes - more subtle design */}
@@ -372,13 +371,17 @@ const CustomNode = ({ data, id }: NodeProps) => {
   );
 };
 
-// Define the node types
+CustomNode.displayName = 'CustomNode';
+
+// Define the node types outside component to prevent recreation on every render
 const nodeTypes = {
   customNode: CustomNode,
 };
 
-export default function MindMapView() {  const router = useRouter();
+export default function MindMapView() {  
+  const router = useRouter();
   const { user, loading, isAuthenticated, logout } = useAuth();
+  const params = useParams(); // Move useParams to top before any conditional returns
 
   // Handle authentication redirect in useEffect instead of during render
   useEffect(() => {
@@ -403,7 +406,7 @@ export default function MindMapView() {  const router = useRouter();
   console.log('Mind map view rendering with:', { 
     authenticated: isAuthenticated, 
     loading: loading, 
-    params: useParams(),
+    params: params, // Use the params variable instead of calling useParams() here
     nodes: 0
   });
 
@@ -759,9 +762,15 @@ function MindMapContent() {
         console.log(`Loading mind map with ID: ${mindMapId}`);
 
         // First try to load from localStorage
+        // Handle both cases: with and without 'mindmap_' prefix
+        const storageKey = mindMapId.startsWith('mindmap_') ? mindMapId : `mindmap_${mindMapId}`;
+        console.log(`Looking for mind map in localStorage with key: ${storageKey}`);
+        
         let localData;
         try {
-          localData = localStorage.getItem(`mindmap_${mindMapId}`);
+          localData = localStorage.getItem(storageKey);
+          console.log(`localStorage.getItem result: ${localData ? 'Found data' : 'null'}`);
+          
           if (localData) {
             const parsedData = JSON.parse(localData);
             if (parsedData && parsedData.nodes && parsedData.nodes.length > 0) {
@@ -826,10 +835,28 @@ function MindMapContent() {
 
         // If not in localStorage or parsing failed, try to fetch from API
         try {
-          console.log('Fetching mind map from API...');          const response = await apiService.getMindMap(mindMapId);
-          if (response.success && response.mindMap) {
-            const mindMapData = response.mindMap.mindmap_data || response.mindMap;
-            console.log('Successfully loaded mind map from API');
+          console.log('Fetching mind map from API...');          
+          const response = await apiService.getMindMap(mindMapId);
+          console.log('API response:', JSON.stringify(response, null, 2)); // Debug log with stringify
+          
+          if (response && response.success && response.mindMap) {
+            // Handle multiple formats: data wrapper, mindmap_data wrapper, or direct data
+            const mindMapData = response.mindMap.data || response.mindMap.mindmap_data || response.mindMap;
+            console.log('Mind map data keys:', Object.keys(mindMapData));
+            console.log('Mind map data structure:', { 
+              hasNodes: !!mindMapData.nodes, 
+              nodeCount: mindMapData.nodes?.length || 0,
+              hasEdges: !!mindMapData.edges,
+              title: mindMapData.title || mindMapData.subject,
+              hasNodesArray: Array.isArray(mindMapData.nodes),
+              mindMapDataKeys: Object.keys(mindMapData)
+            });
+            
+            // Validate the mind map data has required structure
+            if (!mindMapData.nodes || !Array.isArray(mindMapData.nodes) || mindMapData.nodes.length === 0) {
+              console.error('Invalid mind map structure from API. Full data:', JSON.stringify(mindMapData, null, 2));
+              throw new Error('Invalid mind map data structure from server');
+            }
             
             // Store the full backend data for content access
             setBackendData(mindMapData);
@@ -839,15 +866,26 @@ function MindMapContent() {
             setMindMapTitle(mindMapData.title || mindMapData.subject || 'Mind Map');
             
             // Store in localStorage for future use
-            localStorage.setItem(`mindmap_${mindMapId}`, JSON.stringify(mindMapData));
+            localStorage.setItem(storageKey, JSON.stringify(mindMapData));
             
             // Initialize React Flow nodes and edges
             initializeReactFlowData(mindMapData);
           } else {
-            throw new Error('Failed to load mind map from server');
+            console.error('API response missing expected data:', response);
+            const errorMsg = response?.error || 'Failed to load mind map from server';
+            throw new Error(errorMsg);
           }        } catch (apiError) {
-          console.error('Failed to load from API, using fallback data:', apiError);
-          // Use fallback dummy data if both localStorage and API fail
+          console.error('Failed to load from API:', apiError);
+          const errorMessage = apiError instanceof Error ? apiError.message : 'Unknown error';
+          
+          // Check if it's a "not found" error and provide helpful message
+          if (errorMessage.includes('not found') || errorMessage.includes('Local mind map not found')) {
+            console.warn('Mind map not found in localStorage or server. It may need to be created first.');
+            setError('Mind map not found. Please create a new mind map or select an existing one from the history.');
+          }
+          
+          // Use fallback dummy data for demo purposes
+          console.log('Loading fallback demo data...');
           const fallbackData = generateFallbackMindMapData();
           setBackendData(fallbackData);
           setMindMapData(getFallbackData());
@@ -1792,7 +1830,8 @@ More detailed content will be available soon with comprehensive explanations, eq
         });
       }
     });    return flowNodes;
-  }, [mindMapData, selectedNode, topicsReadStatus, handleToggleReadStatus, handleNodeClick]);
+  }, [mindMapData, selectedNode, topicsReadStatus]); // Removed handleToggleReadStatus and handleNodeClick from dependencies
+  
   // Create initial edges from the mindMapData structure
   const initialEdges = useMemo(() => {
     const flowEdges: Edge[] = [];
@@ -1833,6 +1872,20 @@ More detailed content will be available soon with comprehensive explanations, eq
     // Set up state hooks for nodes and edges
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Attach handlers to nodes in a separate effect to avoid recreating all nodes
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          onToggleReadStatus: handleToggleReadStatus,
+          onNodeClick: handleNodeClick,
+        },
+      }))
+    );
+  }, [handleToggleReadStatus, handleNodeClick, setNodes]);
 
   // Function to handle AI expansion of leaf nodes
   const handleExpandNode = useCallback(async (nodeId: string) => {
@@ -1960,6 +2013,75 @@ More detailed content will be available soon with comprehensive explanations, eq
           ...prev,
           [nodeId]: response.expandedNodes
         }));
+
+        // Update localMindMapData to add the new nodes to the sidebar hierarchy
+        setLocalMindMapData(prevData => {
+          // Helper function to recursively find and update a node
+          const addSubtopicsToNode = (topics: SidebarTopic[]): SidebarTopic[] => {
+            return topics.map(topic => {
+              // Check if this topic is the one we're expanding
+              if (topic.id === nodeId) {
+                return {
+                  ...topic,
+                  subtopics: [
+                    ...topic.subtopics,
+                    ...response.expandedNodes.map((subNode: any) => ({
+                      id: subNode.id,
+                      title: subNode.title,
+                      isRead: false,
+                      level: subNode.level,
+                      subtopics: [] // Initially empty, can be expanded later
+                    }))
+                  ]
+                };
+              }
+              
+              // Recursively check subtopics
+              if (topic.subtopics && topic.subtopics.length > 0) {
+                const updatedSubtopics = addSubtopicsToSubtopic(topic.subtopics);
+                if (updatedSubtopics !== topic.subtopics) {
+                  return { ...topic, subtopics: updatedSubtopics };
+                }
+              }
+              
+              return topic;
+            });
+          };
+          
+          // Helper function to recursively update subtopics
+          const addSubtopicsToSubtopic = (subtopics: any[]): any[] => {
+            return subtopics.map(subtopic => {
+              // Check if this subtopic is the one we're expanding
+              if (subtopic.id === nodeId) {
+                return {
+                  ...subtopic,
+                  subtopics: [
+                    ...(subtopic.subtopics || []),
+                    ...response.expandedNodes.map((subNode: any) => ({
+                      id: subNode.id,
+                      title: subNode.title,
+                      isRead: false,
+                      level: subNode.level,
+                      subtopics: [] // Initially empty, can be expanded later
+                    }))
+                  ]
+                };
+              }
+              
+              // Recursively check nested subtopics
+              if (subtopic.subtopics && subtopic.subtopics.length > 0) {
+                const updatedNestedSubtopics = addSubtopicsToSubtopic(subtopic.subtopics);
+                if (updatedNestedSubtopics !== subtopic.subtopics) {
+                  return { ...subtopic, subtopics: updatedNestedSubtopics };
+                }
+              }
+              
+              return subtopic;
+            });
+          };
+          
+          return addSubtopicsToNode(prevData);
+        });
 
         // Center the view on the newly expanded area
         setTimeout(() => {
@@ -2166,8 +2288,7 @@ More detailed content will be available soon with comprehensive explanations, eq
               defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
               minZoom={0.2}
               maxZoom={2}
-              snapToGrid={true}
-              snapGrid={[15, 15]}
+              snapToGrid={false}
               // Add animation duration for smoother transitions
               deleteKeyCode="Delete"
               selectionKeyCode="Shift"
