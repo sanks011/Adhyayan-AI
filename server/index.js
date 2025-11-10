@@ -12,6 +12,7 @@ const sharp = require("sharp");
 const mammoth = require("mammoth");
 const path = require("path");
 const fs = require("fs").promises;
+const fsSync = require('fs');
 const fetch = require("node-fetch"); // For keep-alive pings
 const { fixBrokenJSON } = require("./fix_json"); // Import the JSON fixing utility
 const { transformGroqResponse } = require("./transform"); // Import the transform utility
@@ -275,14 +276,45 @@ try {
     console.log("Firebase Admin initialized successfully");
     firebaseInitialized = true;
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    console.log(
-      "Initializing Firebase Admin with application default credentials"
-    );
-    admin.initializeApp();
-    console.log(
-      "Firebase Admin initialized with application default credentials"
-    );
-    firebaseInitialized = true;
+    // If GOOGLE_APPLICATION_CREDENTIALS is set, verify the file exists. If not,
+    // attempt to find a service account JSON file in the server directory and use it.
+    const gacPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    try {
+      if (gacPath && fsSync.existsSync(gacPath)) {
+        console.log("Initializing Firebase Admin with application default credentials (file exists):", gacPath);
+        admin.initializeApp();
+        console.log("Firebase Admin initialized with application default credentials");
+        firebaseInitialized = true;
+      } else {
+        console.warn("GOOGLE_APPLICATION_CREDENTIALS is set but the file was not found:", gacPath);
+        // Try to auto-detect a service account file in the server directory
+        const files = fsSync.readdirSync(__dirname);
+        const candidate = files.find((f) => f.endsWith('.json') && f.toLowerCase().includes('firebase-adminsdk'));
+        if (candidate) {
+          const candidatePath = path.join(__dirname, candidate);
+          try {
+            const parsed = JSON.parse(fsSync.readFileSync(candidatePath, 'utf8'));
+            if (parsed.private_key && parsed.client_email) {
+              console.log('Found service account file, initializing Firebase Admin with:', candidatePath);
+              admin.initializeApp({
+                credential: admin.credential.cert(parsed),
+              });
+              // set env var so other libs that check it can find it
+              process.env.GOOGLE_APPLICATION_CREDENTIALS = candidatePath;
+              firebaseInitialized = true;
+            } else {
+              console.warn('Candidate JSON found but it does not look like a service account:', candidatePath);
+            }
+          } catch (err) {
+            console.error('Error reading/parsing candidate service account file:', candidatePath, err.message);
+          }
+        } else {
+          console.warn('No candidate service account JSON found in server directory.');
+        }
+      }
+    } catch (err) {
+      console.error('Error while checking GOOGLE_APPLICATION_CREDENTIALS file:', err.message);
+    }
   } else {
     console.warn(
       "Firebase service account not provided. Authentication will be limited."
