@@ -793,14 +793,16 @@ function ConfirmPageContent(): React.ReactElement {
       // Hide the connection interface
       setShowWalletConnection(false);
       
-      // Proceed with payment
+      // Proceed with payment - use setTimeout to avoid stale closure
       setTimeout(() => {
-        handlePayment('aptos');
+        // Trigger a re-render which will show the payment button
+        // User can click the payment button instead of auto-triggering
+        console.log("Wallet connected, ready for payment");
       }, 500);
     } else {
       setError("Connected wallet does not have a valid address");
     }
-  }, [handlePayment]);
+  }, []);
   const handleWalletConnected = (address: string, type: string) => {
     // Use the proper Aptos address normalization function
     const sanitizedAddress = normalizeAptosAddress(address);
