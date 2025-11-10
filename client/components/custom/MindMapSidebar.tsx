@@ -129,7 +129,10 @@ export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
                           }
                           onTopicSelect?.(topic.id);
                         }}
-                        className="font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-md transition-colors"
+                        className={cn(
+                          "font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-md transition-colors",
+                          open && "pr-10" // Add padding-right when sidebar is open to prevent title overlap
+                        )}
                         sidebarOpen={open}
                       />
                       
@@ -192,7 +195,7 @@ export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
                                 className={cn(
                                   "text-sm",
                                   open 
-                                    ? "py-2 pl-2 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                    ? "py-2 pl-2 pr-8 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800" // Add pr-8 when open
                                     : "py-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700"
                                 )}
                                 onClick={() => onSubtopicSelect?.(topic.id, subtopic.id)}
@@ -422,8 +425,8 @@ export const SidebarLink = ({
       <button
         onClick={onClick}
         className={cn(
-          "flex items-center gap-2 text-left",
-          sidebarOpen ? "flex-1" : "justify-center w-full"
+          "flex items-center gap-2 text-left overflow-hidden",
+          sidebarOpen ? "flex-1 max-w-[calc(100%-2.5rem)]" : "justify-center w-full"
         )}
       >
         {link.icon}
@@ -433,7 +436,8 @@ export const SidebarLink = ({
             opacity: sidebarOpen ? 1 : 0,
           }}
           transition={{ duration: 0.1 }}
-          className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0"
+          className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 inline-block !p-0 !m-0 truncate overflow-hidden"
+          title={link.label}
         >
           {link.label}
         </motion.span>

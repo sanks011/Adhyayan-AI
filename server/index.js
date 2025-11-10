@@ -623,6 +623,10 @@ app.post("/api/mindmap/create", verifyToken, checkDbConnection, async (req, res)
         error: "Subject name is required",
       });
     }    console.log("Generating mind map for subject:", subjectName);
+    // Detect if this is a programming/CS subject
+    const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
+    const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
+    
     const completion = await openai.chat.completions.create({
       messages: [
         {
@@ -636,6 +640,7 @@ ADVANCED MIND MAP INTELLIGENCE:
 4. COMPLETE COVERAGE: Include ALL major areas of the subject - theoretical, practical, historical, and contemporary aspects
 5. INTELLIGENT ORGANIZATION: Structure topics in logical learning progression with clear conceptual relationships
 6. CROSS-DISCIPLINARY CONNECTIONS: Identify relationships with other fields and interdisciplinary applications
+7. SUBJECT-APPROPRIATE CONTENT: Adapt content style to the subject matter - use concepts and theories for sciences/humanities, and include practical examples only for technical/programming subjects
 
 MIND MAP STRUCTURE REQUIREMENTS:
 - Central node: Subject name with comprehensive academic overview
@@ -644,6 +649,16 @@ MIND MAP STRUCTURE REQUIREMENTS:
 - Deeper nesting: Add sub_subtopics, sub_sub_subtopics as needed for complex subjects
 - Rich descriptions: Educational content for each node explaining key concepts
 - Progressive complexity: Arrange topics to build knowledge systematically
+
+CONTENT STYLE GUIDELINES:
+${isProgrammingSubject ? 
+`- This is a PROGRAMMING/TECHNICAL subject - include code examples, syntax, algorithms, and implementation details where relevant
+- Provide practical coding examples and best practices
+- Include technical terminology and programming concepts` :
+`- This is a NON-PROGRAMMING subject - focus ONLY on concepts, theories, processes, and explanations
+- DO NOT generate any code, programming syntax, or implementation details
+- Use natural language explanations, examples from the field, and theoretical frameworks
+- Focus on understanding, applications, and real-world examples relevant to the subject`}
 
 PERFECT JSON OUTPUT FORMAT:
 {
@@ -679,7 +694,7 @@ CRITICAL SUCCESS CRITERIA:
 - Cover 100% of the subject's academic scope
 - Include theoretical foundations, methodologies, and applications
 - Create logical learning progression
-- Provide rich, educational content descriptions
+- Provide rich, educational content descriptions appropriate to the subject type
 - Use proper academic terminology
 - Structure for university-level learning
 - Generate unlimited depth as needed for complex topics
@@ -695,7 +710,7 @@ Create the most comprehensive academic mind map possible for the subject.`,
           content: `Create a comprehensive, university-level mind map for: "${subjectName}"
 ${prompt ? ` Additional requirements: ${prompt}` : ""}
 
-Generate a complete academic mind map covering all major areas, theories, methods, and applications of this subject.`,
+Generate a complete academic mind map covering all major areas, theories, methods, and applications of this subject.${!isProgrammingSubject ? '\n\nIMPORTANT: This is NOT a programming subject. Focus on concepts, theories, and explanations. DO NOT include any code or programming syntax.' : ''}`,
         },      ],      model: "gpt-3.5-turbo",
       temperature: 0.2,
       max_tokens: 3000,
@@ -968,6 +983,10 @@ app.post("/api/mindmap/parse-document", verifyToken, upload.single("document"), 
         ? documentText.slice(0, maxLength) + "... [Text truncated due to length]"
         : documentText;
 
+    // Detect if this is a programming/CS subject
+    const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
+    const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
+
     const completion = await parsingOpenAI.chat.completions.create({
       messages: [
         {
@@ -981,6 +1000,7 @@ ENHANCED DOCUMENT ANALYSIS CAPABILITIES:
 4. UNLIMITED NESTING DEPTH: Extract content to unlimited depth levels (subtopics → sub_subtopics → sub_sub_subtopics →...)
 5. SEMANTIC CLUSTERING: Group related concepts even when not explicitly connected in the document
 6. CONTEXTUAL UNDERSTANDING: Preserve the original meaning and educational intent of all content
+7. SUBJECT-APPROPRIATE CONTENT: Adapt content to the subject matter - use concepts for non-technical subjects, include code/examples only for programming topics
 
 DOCUMENT PROCESSING REQUIREMENTS:
 - Extract ALL main topics from document sections/chapters
@@ -991,6 +1011,15 @@ DOCUMENT PROCESSING REQUIREMENTS:
 - Preserve educational progression and learning path
 - Handle ANY document layout or formatting style
 - Output PERFECTLY valid JSON with proper nesting structure
+
+CONTENT STYLE GUIDELINES:
+${isProgrammingSubject ? 
+`- This is a PROGRAMMING/TECHNICAL subject - include code examples, syntax, algorithms from the document where relevant
+- Preserve technical implementation details and programming concepts from the document` :
+`- This is a NON-PROGRAMMING subject - focus ONLY on concepts, theories, processes from the document
+- DO NOT add code, programming syntax, or implementation details not present in the document
+- Extract and explain concepts using natural language and subject-specific terminology
+- Focus on understanding, processes, and real-world applications from the document`}
 
 PERFECT JSON OUTPUT FORMAT:
 {
@@ -1039,7 +1068,7 @@ Transform the complete document into a comprehensive learning mind map with perf
           role: "user",
           content: `Analyze this complete document and create a comprehensive mind map for "${subjectName}" extracting ALL educational content:
 
-${trimmedText}`,
+${trimmedText}${!isProgrammingSubject ? '\n\nIMPORTANT: This is NOT a programming subject. Focus only on concepts, theories, and explanations from the document. DO NOT add any code or programming syntax.' : ''}`,
         },      ],      model: "gpt-3.5-turbo",
       temperature: 0.1, // Lower temperature for more deterministic parsing
       max_tokens: 3000,
@@ -1174,7 +1203,13 @@ app.post("/api/mindmap/generate", verifyToken, checkDbConnection, async (req, re
 
     console.log(`Generating mind map for subject: ${subjectName}`);
     console.log(`Syllabus length: ${syllabus.length} characters`);
-    console.log(`Deducted ${POINTS_REQUIRED} Gyan Points from user: ${userId}`);    let parsingCompletion;
+    console.log(`Deducted ${POINTS_REQUIRED} Gyan Points from user: ${userId}`);
+
+    // Detect if this is a programming/CS subject
+    const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
+    const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
+
+    let parsingCompletion;
     try {
 parsingCompletion = await parsingOpenAI.chat.completions.create({
   messages: [
@@ -1185,8 +1220,16 @@ parsingCompletion = await parsingOpenAI.chat.completions.create({
 1. Extract main topics and subtopics from the syllabus
 2. Organize content into a clear hierarchy
 3. Clean up titles (remove clutter like "Unit-1", hours, codes)
-4. Create brief educational descriptions
+4. Create brief educational descriptions appropriate to the subject type
 5. Output ONLY valid JSON
+
+CONTENT STYLE GUIDELINES:
+${isProgrammingSubject ? 
+`- This is a PROGRAMMING/TECHNICAL subject - descriptions can reference code, algorithms, implementation details
+- Use technical terminology from computer science/programming` :
+`- This is a NON-PROGRAMMING subject - descriptions should focus on concepts, theories, processes
+- DO NOT include code, programming syntax, or implementation details in descriptions
+- Use natural language and subject-specific terminology (e.g., biological, historical, mathematical)`}
 
 ---
 
@@ -1546,7 +1589,7 @@ mindMapCompletion = await openai.chat.completions.create({
 
 1. Transform the parsed structure into mind map JSON format
 2. Preserve the hierarchical structure
-3. Create brief educational descriptions
+3. Create brief educational descriptions appropriate to the subject type
 4. Use the original titles
 5. Ensure output is valid JSON with:
    - Double-quoted keys/values.
@@ -1554,6 +1597,16 @@ mindMapCompletion = await openai.chat.completions.create({
    - Escaped quotes in strings.
    - Balanced brackets (\`{\` matches \`}\`, \`[\` matches \`]\`).
    - No syntax errors.
+
+CONTENT STYLE GUIDELINES:
+${isProgrammingSubject ? 
+`- This is a PROGRAMMING/TECHNICAL subject - content can include code examples, algorithms, implementation details
+- Use technical terminology and programming concepts
+- Include practical coding examples where relevant` :
+`- This is a NON-PROGRAMMING subject - content should focus ONLY on concepts, theories, processes
+- DO NOT add code, programming syntax, or implementation details
+- Use natural language explanations and subject-specific terminology
+- Focus on understanding, applications, and real-world examples from the field`}
 
 ---
 
@@ -2345,16 +2398,17 @@ Your response must be a valid JSON array that can be parsed directly:`
       try {
         questions = JSON.parse(questionText);
         
-        // Validate that we got an array of strings
-        if (!Array.isArray(questions) || questions.length === 0) {
-          throw new Error("Invalid response format - not an array");
+        // Validate that we got an array
+        if (!Array.isArray(questions)) {
+          console.log("Response is not an array, using default questions");
+          questions = [];
         }
         
         // Ensure we have exactly 5 questions and they are all strings
         questions = questions.filter(q => typeof q === 'string' && q.trim().length > 0).slice(0, 5);
         
+        // Fill with default questions if we don't have enough (including if empty array)
         if (questions.length < 5) {
-          // Fill with default questions if we don't have enough
           const defaultQuestions = [
             "Tell me more about this topic",
             "What are the key concepts here?",
@@ -2362,6 +2416,9 @@ Your response must be a valid JSON array that can be parsed directly:`
             "Can you explain this in simple terms?",
             "What should I focus on learning?"
           ];
+          
+          console.log(`Only ${questions.length} valid questions generated, filling with defaults`);
+          
           while (questions.length < 5) {
             questions.push(defaultQuestions[questions.length] || "What else should I know?");
           }
