@@ -47,7 +47,7 @@
     "lucide-react": "^0.513.0",
     "mongodb": "^6.17.0",
     "motion": "^12.18.1",
-    "next": "15.3.3",
+    "next": "15.3.8",
     "nodemailer": "^7.0.3",
     "razorpay": "^2.9.6",
     "react": "^19.1.0",
