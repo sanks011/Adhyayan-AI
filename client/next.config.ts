@@ -1,7 +1,10 @@
-import { createCivicAuthPlugin } from "@civic/auth-web3/nextjs"
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Firebase uses ESM-only exports that Next.js webpack cannot resolve
+  // server-side without explicit transpilation. Adding them here forces
+  // Next.js to handle their module resolution through its own pipeline.
+  transpilePackages: ["firebase", "@firebase/auth", "@firebase/firestore", "@firebase/storage", "@firebase/functions", "@firebase/app"],
   // Enable SWC styled-components support to ensure stable class names between
   // server and client rendering and avoid hydration mismatches when using
   // styled-components.
@@ -20,12 +23,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-const withCivicAuth = createCivicAuthPlugin({
-  clientId: process.env.NEXT_PUBLIC_CIVIC_CLIENT_ID || "937a64d7-2299-4dac-9620-5e2614ad615b",
-  // Add proper configuration to prevent MetakeepWeb3Client errors
-  oauthServer: process.env.NEXT_PUBLIC_AUTH_SERVER || 'https://auth.civic.com/oauth',
-  // @ts-ignore - endpoints is valid at runtime but not in types
-  endpoints: { wallet: process.env.NEXT_PUBLIC_WALLET_API_BASE_URL }
-});
-
-export default withCivicAuth(nextConfig);
+export default nextConfig;

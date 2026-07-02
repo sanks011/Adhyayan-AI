@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import styled from 'styled-components';
 import { CustomNavbar } from "@/components/custom/CustomNavbar";
@@ -10,9 +10,7 @@ import {
   IconArrowLeft,
   IconCurrencyRupee,
   IconCurrencyDollar,
-  IconExternalLink,
   IconCoins,
-  IconWallet,
   IconDashboard,
   IconCopy
 } from '@tabler/icons-react';
@@ -70,17 +68,6 @@ const StyledWrapper = styled.div`
     transform: translateY(-2px);
   }
 
-  .aptos-link {
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-    border-radius: 8px;
-    transition: all 0.3s ease;
-  }
-
-  .aptos-link:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(124, 58, 237, 0.3);
-  }
-
   .dashboard-button {
     background: linear-gradient(135deg, #975af4, #2f7cf8 40%, #78aafa 65%, #934cff);
     border-radius: 8px;
@@ -115,18 +102,9 @@ function PaymentSuccessContent() {
   const amount = searchParams.get('amount') || '0';
   const currency = searchParams.get('currency') || 'INR';
   const points = searchParams.get('points') || '0';
-  const walletAddress = searchParams.get('wallet') || '';
-  const paymentMethod = searchParams.get('method') || 'aptos'; // Default to aptos for backward compatibility
   
   const formatCurrency = (amount: string, currency: string) => {
     return currency === 'INR' ? `₹${amount}` : `$${amount}`;
-  };
-  
-  // Function to format and truncate wallet address
-  const formatWalletAddress = (address: string): string => {
-    if (!address) return '';
-    if (address.length <= 12) return address;
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
   
   // Function to copy transaction hash to clipboard
@@ -134,12 +112,12 @@ function PaymentSuccessContent() {
     navigator.clipboard.writeText(text)
       .then(() => {
         setCopied(true);
-        toast.success('Transaction hash copied to clipboard!');
+        toast.success('Transaction ID copied to clipboard!');
         setTimeout(() => setCopied(false), 2000);
       })
       .catch(err => {
         console.error('Failed to copy:', err);
-        toast.error('Failed to copy transaction hash');
+        toast.error('Failed to copy transaction ID');
       });
   };
 
@@ -158,7 +136,7 @@ function PaymentSuccessContent() {
               <div className="flex items-center gap-4 mb-8">
                 <button 
                   onClick={() => router.push('/dashboard')}
-                  className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+                  className="flex items-center gap-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 >
                   <IconArrowLeft className="h-4 w-4" />
                   Dashboard
@@ -180,16 +158,6 @@ function PaymentSuccessContent() {
                 <div className="details-grid">
                   <div className="detail-item">
                     <div className="icon-circle">
-                      <IconWallet className="h-6 w-6 text-emerald-400" />
-                    </div>
-                    <div>
-                      <div className="text-neutral-400 text-sm">Wallet Address</div>
-                      <div className="text-white font-medium">{formatWalletAddress(walletAddress)}</div>
-                    </div>
-                  </div>
-
-                  <div className="detail-item">
-                    <div className="icon-circle">
                       <IconCoins className="h-6 w-6 text-amber-400" />
                     </div>
                     <div>
@@ -208,7 +176,7 @@ function PaymentSuccessContent() {
                         )}
                       </div>
                       <div>
-                        <div className="text-neutral-400 text-sm">Amount</div>
+                        <div className="text-neutral-400 text-sm">Amount Paid</div>
                         <div className="text-white font-medium">{formatCurrency(amount, currency)}</div>
                       </div>
                     </div>
@@ -234,14 +202,14 @@ function PaymentSuccessContent() {
 
                   <div className="detail-item">
                     <div className="w-full overflow-hidden">
-                      <div className="text-neutral-400 text-sm mb-1">Transaction Hash</div>
+                      <div className="text-neutral-400 text-sm mb-1">Transaction ID</div>
                       <div className="flex items-center justify-between">
                         <div className="text-white font-mono text-sm truncate">
                           {txnHash}
                         </div>
                         <button 
                           onClick={() => copyToClipboard(txnHash)}
-                          className="ml-2 p-2 rounded-md hover:bg-white/10 transition-colors"
+                          className="ml-2 p-2 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
                         >
                           <IconCopy className="h-4 w-4 text-neutral-400 hover:text-white" />
                         </button>
@@ -251,22 +219,10 @@ function PaymentSuccessContent() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8">
-                  {paymentMethod === 'aptos' && (
-                    <a 
-                      href={`https://explorer.aptoslabs.com/txn/${txnHash}?network=devnet`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="aptos-link flex items-center justify-center gap-2 text-white font-medium py-3 px-4"
-                    >
-                      View on Aptos Explorer
-                      <IconExternalLink className="h-4 w-4" />
-                    </a>
-                  )}
-                  
+                <div className="flex justify-center mt-8">
                   <button 
                     onClick={() => router.push('/dashboard')}
-                    className={`dashboard-button flex items-center justify-center gap-2 text-white font-medium py-3 px-4 ${paymentMethod === 'aptos' ? '' : 'col-span-2'}`}
+                    className="dashboard-button w-full flex items-center justify-center gap-2 text-white font-medium py-3 px-4 cursor-pointer"
                   >
                     Go to Dashboard
                     <IconDashboard className="h-4 w-4" />
@@ -303,12 +259,12 @@ function PaymentSuccessContent() {
               },
             },
           }}
-        />      </div>
+        />
+      </div>
     </StyledWrapper>
   );
 }
 
-// Loading component for Suspense
 function PaymentSuccessLoading() {
   return (
     <StyledWrapper>
@@ -322,7 +278,6 @@ function PaymentSuccessLoading() {
   );
 }
 
-// Main export with Suspense boundary
 export default function PaymentSuccess() {
   return (
     <Suspense fallback={<PaymentSuccessLoading />}>
