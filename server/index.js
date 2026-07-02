@@ -34,8 +34,23 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 // Production - restrict to your frontend domain
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:3002",
+  process.env.FRONTEND_URL,
+  "https://adhyayan-ai.vercel.app"
+].filter(Boolean);
+
 const corsOptions = {
-   origin: process.env.FRONTEND_URL || 'https://adhyayan-ai.vercel.app',
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.startsWith(o))) {
+      return callback(null, true);
+    }
+    const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+    return callback(new Error(msg), false);
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };

@@ -3,17 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@aptos-labs/ts-sdk": "^2.0.1",
-    "@aptos-labs/wallet-adapter-react": "^6.1.2",
-    "@aptos-labs/wallet-standard": "^0.5.0",
-    "@civic/auth": "^0.7.0",
-    "@civic/auth-web3": "^0.5.15",
     "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",
@@ -21,6 +16,7 @@
     "@heroui/react": "^2.7.9",
     "@heroui/system": "^2.4.16",
     "@heroui/theme": "^2.4.16",
+    "@next/swc-wasm-nodejs": "^15.5.20",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@tabler/icons-react": "^3.34.0",
@@ -43,11 +39,12 @@
     "gsap": "^3.13.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.22",
+    "lenis": "^1.0.42",
     "lucide": "^0.513.0",
     "lucide-react": "^0.513.0",
     "mongodb": "^6.17.0",
     "motion": "^12.18.1",
-    "next": "15.3.8",
+    "next": "^15.5.20",
     "nodemailer": "^7.0.3",
     "razorpay": "^2.9.6",
     "react": "^19.1.0",
@@ -62,7 +59,6 @@
     "remark-math": "^6.0.0",
     "simplex-noise": "^4.0.3",
     "styled-components": "^6.1.19",
-    "lenis": "^1.0.42",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
@@ -77,13 +73,5 @@
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.4",
     "typescript": "^5"
-  },
-  "overrides": {
-    "@aptos-labs/derived-wallet-ethereum": {
-      "@aptos-labs/ts-sdk": "^2.0.1"
-    }
-  },
-  "resolutions": {
-    "@aptos-labs/ts-sdk": "2.0.1"
   }
 }
