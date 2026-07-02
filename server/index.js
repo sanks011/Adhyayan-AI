@@ -55,6 +55,14 @@ app.use((err, req, res, next) => {
 });
 
 // Initialize Groq (keeping for backward compatibility)
+// Ensure GROQ_API_KEY is present; provide a fallback for development to avoid crashes
+if (!process.env.GROQ_API_KEY) {
+  console.warn(
+    "GROQ_API_KEY not found in environment variables. Using fallback key for development only."
+  );
+  // NOTE: This is NOT a real API key. Replace with a valid GROQ API key for production.
+  process.env.GROQ_API_KEY = "fallback_groq_api_key";
+}
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
