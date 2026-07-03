@@ -5,12 +5,12 @@ const { promisify } = require('util');
 const writeFileAsync = promisify(fs.writeFile);
 const mkdirAsync = promisify(fs.mkdir);
 const existsAsync = promisify(fs.exists);
+const { OpenAI } = require('openai');
 require('dotenv').config();
 
 class ElevenLabsService {
-  constructor(apiKey, geminiApiKey) {
+  constructor(apiKey) {
     this.apiKey = apiKey;
-    this.geminiApiKey = geminiApiKey;
     this.baseUrl = 'https://api.elevenlabs.io/v1';    this.defaultVoiceId = 'bIHbv24MWmeRgasZH58o'; // Will - available male voice
     this.femaleVoiceId = 'EXAVITQu4vr4xnSDxMaL'; // Sarah - available female voice
     this.podcastDir = path.join(__dirname, 'public', 'podcasts');
@@ -42,11 +42,11 @@ class ElevenLabsService {
       throw new Error('Failed to fetch voices from ElevenLabs API');
     }
   }
-  // Generate podcast script from topic content using Gemini API
+  // Generate podcast script from topic content using OpenAI API
   async generatePodcastScript(topic, content) {
     try {
       console.log(`Generating podcast script for topic: ${topic}`);
-        const promptTemplate = `
+      const promptTemplate = `
       Create a comprehensive educational podcast script (8-12 minutes when read aloud) about "${topic}".
       
       Context and reference material:
@@ -88,45 +88,32 @@ class ElevenLabsService {
       Generate ONLY the script dialogue - no stage directions, no explanations, no extra text.
       `;
 
-      // Call Gemini API for script generation
-      const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`,
-        {
-          contents: [
-            {
-              parts: [
-                {
-                  text: promptTemplate
-                }
-              ]
-            }
-          ]
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
 
-      // Extract the generated content from Gemini response
-      if (response.data && response.data.candidates && response.data.candidates[0] && 
-          response.data.candidates[0].content && response.data.candidates[0].content.parts) {
-        const script = response.data.candidates[0].content.parts[0].text;
+      const completion = await openai.chat.completions.create({
+        messages: [
+          {
+            role: "user",
+            content: promptTemplate
+          }
+        ],
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+        max_tokens: 2500
+      });
+
+      const script = completion.choices[0]?.message?.content || "";
+      if (script.trim().length > 0) {
         console.log('Generated script preview:', script.substring(0, 100) + '...');
         return script;
       } else {
-        console.error('Unexpected Gemini API response format:', response.data);
-        // Fall back to demo script if Gemini fails
+        console.error('Empty response from OpenAI during script generation');
         return this.getDemoScript();
       }
     } catch (error) {
-      console.error('Error generating podcast script with Gemini:', error);
-      if (error.response) {
-        console.error('Gemini API error details:', error.response.data);
-      }
-      
-      // Fall back to the demo script
+      console.error('Error generating podcast script with OpenAI:', error);
       console.log('Falling back to demo script');
       return this.getDemoScript();
     }

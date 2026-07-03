@@ -5,7 +5,6 @@ import { useAuth } from '@/lib/auth-context';
 import { apiService } from '@/lib/api';
 import { FloatingDock } from "@/components/ui/floating-dock";
 import { MindMapSidebar } from "@/components/custom/MindMapSidebar";
-import { QuizModal } from "@/components/custom/QuizModal";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import { MultimediaContentDisplay } from "@/components/custom/MultimediaContentDisplay";
@@ -551,11 +550,6 @@ function MindMapContent() {
   const [chatMessages, setChatMessages] = useState<Array<{id: string, type: 'user' | 'ai', content: string, timestamp: Date}>>([]);
   const [isAiTyping, setIsAiTyping] = useState(false);
   
-  // Quiz modal state for mark-as-read functionality
-  const [showQuizModal, setShowQuizModal] = useState(false);
-  const [pendingReadNode, setPendingReadNode] = useState<string | null>(null);
-  const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
-  const [loadingQuiz, setLoadingQuiz] = useState(false);
     // Node descriptions and multimedia content state
   const [nodeDescriptions, setNodeDescriptions] = useState<Record<string, string>>({});
   const [nodeMultimedia, setNodeMultimedia] = useState<Record<string, any>>({});
@@ -604,127 +598,6 @@ function MindMapContent() {
     });
       return initialStatus;
   });  // Function to toggle read status of a node
-  const handleToggleReadStatus = useCallback(async (nodeId: string, isRead?: boolean): Promise<void> => {
-    try {
-      const mindMapId = params?.id as string;
-      if (!mindMapId) {
-        console.error('Mind map ID not available');
-        return;
-      }
-
-      // Get current read status - be explicit about it
-      const currentIsRead = topicsReadStatus[nodeId] === true;
-      
-      console.log('=== TOGGLE READ STATUS DEBUG ===');
-      console.log(`Node ID: ${nodeId}`);
-      console.log(`Current isRead from state: ${topicsReadStatus[nodeId]}`);
-      console.log(`Current isRead (boolean): ${currentIsRead}`);
-      console.log(`isRead parameter: ${isRead}`);
-      console.log(`topicsReadStatus:`, topicsReadStatus);
-      
-      // Determine the new read status
-      const newIsRead = isRead !== undefined ? isRead : !currentIsRead;
-      
-      console.log(`New isRead will be: ${newIsRead}`);
-      console.log('================================');
-      
-      // If currently checked and user wants to uncheck, do it directly without quiz
-      if (currentIsRead === true && newIsRead === false) {
-        console.log(`✓ UNCHECKING node ${nodeId} directly (was checked)`);
-        await updateReadStatusDirectly(nodeId, false);
-        return;
-      }
-      
-      // If currently unchecked and user wants to check, show quiz first
-      if (currentIsRead === false && newIsRead === true) {
-        console.log(`✓ SHOWING QUIZ for node ${nodeId} (was unchecked)`);
-        
-        // Show loading state immediately
-        setLoadingQuiz(true);
-        setPendingReadNode(nodeId);
-        
-        // Check if we have a description for this node to generate quiz
-        const nodeDescription = nodeDescriptions[nodeId];
-        if (!nodeDescription) {
-          // If no description available, fetch it first
-          console.log(`No description available for ${nodeId}, fetching...`);
-          try {
-            const nodes = getNodes();
-            const nodeData = nodes.find(node => node.id === nodeId);
-            if (nodeData && nodeData.data && typeof nodeData.data === 'object' && 'label' in nodeData.data) {
-              const nodeLabel = String(nodeData.data.label);
-              const response = await apiService.getMindMapNodeDescription(
-                nodeId,
-                nodeLabel,
-                "",
-                [],
-                []
-              );
-              
-              if (response?.success && response.description) {
-                setNodeDescriptions(prev => ({
-                  ...prev,
-                  [nodeId]: response.description
-                }));
-                // Now proceed with quiz generation using the fetched description
-                await generateAndShowQuiz(nodeId, response.description);
-                return;
-              }
-            }
-          } catch (descError) {
-            console.error('Error fetching node description for quiz:', descError);
-            setLoadingQuiz(false);
-            setPendingReadNode(null);
-          }
-          
-          // If we still don't have description, use a generic one
-          const fallbackDescription = `Educational content about ${nodeId}. This topic contains important concepts that you should understand before marking it as complete.`;
-          await generateAndShowQuiz(nodeId, fallbackDescription);
-        } else {
-          // We have the description, generate quiz
-          await generateAndShowQuiz(nodeId, nodeDescription);
-        }
-        return;
-      }
-      
-      // This shouldn't be reached if we handled uncheck or check cases above
-      console.warn(`⚠️ Reached fallback case for node ${nodeId} - this might indicate a logic error`);
-      console.warn(`Current: ${currentIsRead}, New: ${newIsRead}`);
-      
-    } catch (error) {
-      console.error('Error in handleToggleReadStatus:', error);
-      setLoadingQuiz(false);
-      setPendingReadNode(null);
-    }
-  }, [topicsReadStatus, params?.id, nodeDescriptions, getNodes]);
-
-  // Function to generate and show quiz
-  const generateAndShowQuiz = useCallback(async (nodeId: string, description: string) => {
-    try {
-      // Loading state is already set in handleToggleReadStatus
-      console.log(`Generating quiz for node: ${nodeId}`);
-      const response = await apiService.getMindMapNodeQuiz(nodeId, description);
-      
-      if (response?.success && response.quiz && response.quiz.questions) {
-        setQuizQuestions(response.quiz.questions);
-        setLoadingQuiz(false); // Stop loading before showing modal
-        setShowQuizModal(true); // Show modal immediately after questions are ready
-      } else {
-        console.error('Failed to generate quiz:', response?.error);
-        setLoadingQuiz(false);
-        setPendingReadNode(null);
-        // Fallback: mark as read without quiz
-        await updateReadStatusDirectly(nodeId, true);
-      }
-    } catch (error) {
-      console.error('Error generating quiz:', error);
-      setLoadingQuiz(false);
-      setPendingReadNode(null);
-      // Fallback: mark as read without quiz
-      await updateReadStatusDirectly(nodeId, true);
-    }
-  }, []);
-
   // Function to directly update read status (bypassing quiz)
   const updateReadStatusDirectly = useCallback(async (nodeId: string, newIsRead: boolean) => {
     try {
@@ -912,20 +785,26 @@ function MindMapContent() {
     }
   }, [topicsReadStatus, params?.id, setLocalMindMapData, localMindMapData]);
 
-  // Handle quiz completion
-  const handleQuizSuccess = useCallback(async () => {
-    if (pendingReadNode) {
-      await updateReadStatusDirectly(pendingReadNode, true);
-      setPendingReadNode(null);
-      setQuizQuestions([]);
-      setShowQuizModal(false);
+  // Function to toggle read status of a node
+  const handleToggleReadStatus = useCallback(async (nodeId: string, isRead?: boolean): Promise<void> => {
+    try {
+      const mindMapId = params?.id as string;
+      if (!mindMapId) {
+        console.error('Mind map ID not available');
+        return;
+      }
+
+      // Get current read status - be explicit about it
+      const currentIsRead = topicsReadStatus[nodeId] === true;
+      const newIsRead = isRead !== undefined ? isRead : !currentIsRead;
+      
+      await updateReadStatusDirectly(nodeId, newIsRead);
+    } catch (error) {
+      console.error('Error in handleToggleReadStatus:', error);
     }
-  }, [pendingReadNode, updateReadStatusDirectly]);  // Handle quiz modal close
-  const handleQuizClose = useCallback(() => {
-    setPendingReadNode(null);
-    setQuizQuestions([]);
-    setShowQuizModal(false);
-  }, []);
+  }, [topicsReadStatus, params?.id, updateReadStatusDirectly]);
+
+
 
   // Function to load read status from backend
   const loadReadStatus = useCallback(async () => {
@@ -2460,29 +2339,7 @@ More detailed content will be available soon with comprehensive explanations, eq
     }));
   }, [topicsReadStatus, setNodes]);
   
-  // Sync loading quiz state to nodes
-  useEffect(() => {
-    // Don't update nodes while dragging to prevent position resets
-    if (isDragging.current) return;
-    
-    setNodes(nds => nds.map(node => {
-      const nodeData = node.data as CustomNodeData;
-      const isCurrentlyLoadingQuiz = loadingQuiz && pendingReadNode === node.id;
-      
-      // Only update if loading state actually changed
-      if (isCurrentlyLoadingQuiz !== nodeData.isLoadingQuiz) {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            isLoadingQuiz: isCurrentlyLoadingQuiz
-          }
-        };
-      }
-      
-      return node;
-    }));
-  }, [loadingQuiz, pendingReadNode, setNodes]);
+
   
   // Sync expanded topics state (but don't update all nodes during drag)
   useEffect(() => {
@@ -2538,11 +2395,6 @@ More detailed content will be available soon with comprehensive explanations, eq
       title: "Dashboard",
       icon: <IconBrain className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
       href: "/dashboard",
-    },
-    {
-      title: "Create Room",
-      icon: <IconUsers className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
-      href: "/create-room",
     },
     {
       title: "Mind Map",
@@ -2946,16 +2798,7 @@ More detailed content will be available soon with comprehensive explanations, eq
           mobileClassName="translate-y-20"
           items={dockLinks}
           activeItem="/mind-map"        />
-      </div>      {/* Quiz Modal */}
-      {showQuizModal && quizQuestions.length > 0 && (
-        <QuizModal
-          isOpen={showQuizModal}
-          onClose={handleQuizClose}
-          questions={quizQuestions}
-          onSuccess={handleQuizSuccess}
-          nodeTitle={pendingReadNode || 'Topic'}
-        />
-      )}
+      </div>
     </div>
   );
 }

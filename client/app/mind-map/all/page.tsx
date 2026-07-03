@@ -276,13 +276,6 @@ export default function AllMindMaps() {
       href: "/dashboard",
     },
     {
-      title: "Create Room",
-      icon: (
-        <IconUsers className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-      ),
-      href: "/create-room",
-    },
-    {
       title: "Mind Map",
       icon: (
         <IconMap className="h-full w-full text-neutral-500 dark:text-neutral-300" />

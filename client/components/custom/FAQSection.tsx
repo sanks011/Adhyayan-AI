@@ -11,7 +11,7 @@ const faqs = [
   },
   {
     question: "How does the AI personalization feature work?",
-    answer: "Our AI engine continuously analyzes your learning behavior, quiz performance, and engagement patterns to understand your unique learning style. It then adapts the content difficulty, suggests optimal study schedules, and recommends resources that match your pace and preferences, ensuring maximum retention and understanding."
+    answer: "Our AI engine continuously analyzes your learning behavior, study progress, and engagement patterns to understand your unique learning style. It then adapts the content difficulty, suggests optimal study schedules, and recommends resources that match your pace and preferences, ensuring maximum retention and understanding."
   },
   {
     question: "What subjects and topics are available on the platform?",
