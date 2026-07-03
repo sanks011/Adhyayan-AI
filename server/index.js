@@ -2523,6 +2523,221 @@ Your tone should be that of a knowledgeable and engaging tutor who's passionate 
   }
 });
 
+// Mind Map Node Quiz Generator - Auto-generates a multiple-choice quiz for a node's topic
+app.post("/api/mindmap/node-quiz", verifyToken, async (req, res) => {
+  try {
+    const { nodeId, nodeDescription } = req.body;
+
+    if (!nodeId || !nodeDescription) {
+      return res.status(400).json({
+        success: false,
+        error: "Node ID and description are required",
+      });
+    }
+
+    console.log(`Generating quiz for node: ${nodeId}`);
+
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI tutor that writes multiple-choice quizzes to test understanding of educational content.
+
+Given the educational content, generate exactly 5 multiple-choice questions.
+
+Each question must:
+1. Have exactly 4 answer options
+2. Have exactly one correct option
+3. Test genuine understanding (not trivia), ranging from recall to application
+4. Include a short explanation of why the correct answer is correct
+
+IMPORTANT: Return ONLY valid JSON in this exact shape, no markdown or code fences:
+{"questions":[{"question":"...","options":["...","...","...","..."],"correctIndex":0,"explanation":"..."}]}`
+        },
+        {
+          role: "user",
+          content: `Content:\n${nodeDescription}`
+        }
+      ],
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_tokens: 1200,
+      response_format: { type: "json_object" }
+    });
+
+    let raw = completion.choices[0]?.message?.content || '{"questions": []}';
+    raw = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+    let questions = [];
+    try {
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : parsed.questions;
+      if (Array.isArray(list)) {
+        questions = list
+          .filter(q => q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length >= 2)
+          .map(q => ({
+            question: q.question,
+            options: q.options.slice(0, 4).map(String),
+            correctIndex: Number.isInteger(q.correctIndex) ? Math.max(0, Math.min(q.correctIndex, q.options.length - 1)) : 0,
+            explanation: typeof q.explanation === 'string' ? q.explanation : ''
+          }))
+          .slice(0, 5);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse quiz response:", parseError);
+    }
+
+    if (questions.length === 0) {
+      return res.status(502).json({ success: false, error: "Could not generate a quiz for this topic. Please try again." });
+    }
+
+    return res.json({ success: true, questions });
+  } catch (error) {
+    console.error("Error generating node quiz:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate quiz",
+      details: error.message,
+    });
+  }
+});
+
+// Mind Map Node Flashcards Generator - Auto-generates flashcards for a node's topic
+app.post("/api/mindmap/node-flashcards", verifyToken, async (req, res) => {
+  try {
+    const { nodeId, nodeDescription } = req.body;
+
+    if (!nodeId || !nodeDescription) {
+      return res.status(400).json({
+        success: false,
+        error: "Node ID and description are required",
+      });
+    }
+
+    console.log(`Generating flashcards for node: ${nodeId}`);
+
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI tutor that writes study flashcards from educational content.
+
+Given the educational content, generate exactly 8 flashcards.
+
+Each flashcard must:
+1. Have a concise "question" prompt (a term, concept, or question)
+2. Have a clear "answer" (the definition or explanation)
+3. Cover the most important concepts in the content
+
+IMPORTANT: Return ONLY valid JSON in this exact shape, no markdown or code fences:
+{"flashcards":[{"question":"...","answer":"..."}]}`
+        },
+        {
+          role: "user",
+          content: `Content:\n${nodeDescription}`
+        }
+      ],
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_tokens: 1200,
+      response_format: { type: "json_object" }
+    });
+
+    let raw = completion.choices[0]?.message?.content || '{"flashcards": []}';
+    raw = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+    let flashcards = [];
+    try {
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : parsed.flashcards;
+      if (Array.isArray(list)) {
+        flashcards = list
+          .filter(c => c && typeof c.question === 'string' && typeof c.answer === 'string')
+          .map(c => ({ question: c.question, answer: c.answer }))
+          .slice(0, 12);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse flashcards response:", parseError);
+    }
+
+    if (flashcards.length === 0) {
+      return res.status(502).json({ success: false, error: "Could not generate flashcards for this topic. Please try again." });
+    }
+
+    return res.json({ success: true, flashcards });
+  } catch (error) {
+    console.error("Error generating node flashcards:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate flashcards",
+      details: error.message,
+    });
+  }
+});
+
+// Get a user's self-note for a specific node
+app.get("/api/mindmap/:mindMapId/node/:nodeId/self-notes", verifyToken, async (req, res) => {
+  try {
+    const { mindMapId, nodeId } = req.params;
+    const userId = req.user.uid;
+
+    if (!mindMapId || !nodeId) {
+      return res.status(400).json({ success: false, error: "Mind map ID and node ID are required" });
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db("adhyayan_ai");
+
+    const notesDoc = await db.collection("user_notes").findOne({ userId, mindMapId });
+    await client.close();
+
+    const notes = notesDoc && notesDoc.notes ? (notesDoc.notes[nodeId] || "") : "";
+    res.json({ success: true, notes });
+  } catch (error) {
+    console.error("Error fetching self-note:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch note", details: error.message });
+  }
+});
+
+// Save a user's self-note for a specific node
+app.put("/api/mindmap/:mindMapId/node/:nodeId/self-notes", verifyToken, async (req, res) => {
+  try {
+    const { mindMapId, nodeId } = req.params;
+    const { notes } = req.body;
+    const userId = req.user.uid;
+
+    if (!mindMapId || !nodeId) {
+      return res.status(400).json({ success: false, error: "Mind map ID and node ID are required" });
+    }
+    if (typeof notes !== 'string') {
+      return res.status(400).json({ success: false, error: "notes must be a string" });
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db("adhyayan_ai");
+    const notesCollection = db.collection("user_notes");
+
+    const query = { userId, mindMapId };
+    let notesDoc = await notesCollection.findOne(query);
+    if (!notesDoc) {
+      notesDoc = { userId, mindMapId, notes: {}, createdAt: new Date(), updatedAt: new Date() };
+    }
+    notesDoc.notes = notesDoc.notes || {};
+    notesDoc.notes[nodeId] = notes;
+    notesDoc.updatedAt = new Date();
+
+    await notesCollection.replaceOne(query, notesDoc, { upsert: true });
+    await client.close();
+
+    res.json({ success: true, message: "Note saved", nodeId });
+  } catch (error) {
+    console.error("Error saving self-note:", error);
+    res.status(500).json({ success: false, error: "Failed to save note", details: error.message });
+  }
+});
+
 // Mind Map Node Expansion Endpoint - Generate sub-nodes for leaf nodes
 app.post("/api/mindmap/expand-node", verifyToken, async (req, res) => {
   try {
