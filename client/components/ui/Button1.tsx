@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
@@ -53,10 +53,24 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     
     const handleGoogleSignIn = async () => {
       try {
-        const result = await signInWithPopup(auth, googleProvider);
+        const isMobile = typeof window !== 'undefined' && 
+          /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+          await signInWithRedirect(auth, googleProvider);
+        } else {
+          await signInWithPopup(auth, googleProvider);
+        }
         // The auth context will handle the backend authentication automatically
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error signing in:', error);
+        if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+          try {
+            await signInWithRedirect(auth, googleProvider);
+          } catch (redirectError) {
+            console.error('Error signing in with redirect:', redirectError);
+          }
+        }
       }
     };
 
