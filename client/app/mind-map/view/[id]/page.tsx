@@ -88,6 +88,60 @@ type CustomNodeData = {
   onExpandNode?: (nodeId: string) => void;
 }
 
+// Lay out nodes hierarchically by parentNode so siblings never overlap.
+// Saved/loaded positions are never trusted here — dragged positions aren't
+// persisted back to the backend (see handleNodeDragStop), so any position
+// coming from storage is stale generation-time data that can collide.
+const layoutNodesHierarchically = (nodes: Node[]): Node[] => {
+  const NODE_HEIGHT = 140;
+  const VERTICAL_SPACING = 40;
+  const HORIZONTAL_OFFSET = 350;
+  const STEP = NODE_HEIGHT + VERTICAL_SPACING;
+
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const childrenOf = new Map<string, Node[]>();
+  let root: Node | undefined;
+
+  nodes.forEach(node => {
+    const parentId = node.data?.parentNode as string | undefined;
+    if (!parentId) {
+      if (!root) root = node;
+      return;
+    }
+    if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+    childrenOf.get(parentId)!.push(node);
+  });
+
+  if (!root) return nodes;
+
+  const positioned = new Map<string, { x: number; y: number }>();
+  positioned.set(root.id, root.position || { x: 300, y: 200 });
+
+  const queue = [root.id];
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const parentPos = positioned.get(parentId)!;
+    const children = childrenOf.get(parentId) || [];
+    if (children.length === 0) continue;
+
+    const groupHeight = (children.length - 1) * STEP;
+    const startY = parentPos.y - groupHeight / 2;
+
+    children.forEach((child, index) => {
+      positioned.set(child.id, {
+        x: parentPos.x + HORIZONTAL_OFFSET,
+        y: startY + index * STEP,
+      });
+      queue.push(child.id);
+    });
+  }
+
+  return nodes.map(node => ({
+    ...node,
+    position: positioned.get(node.id) || node.position || { x: 0, y: 0 },
+  }));
+};
+
 // Utility function to calculate dynamic node positions to prevent overlaps
 const calculateDynamicPositions = (nodes: Node[], changedNodeId: string, isExpanding: boolean) => {
   const NODE_HEIGHT = 140; // Updated height to account for new node design
@@ -210,7 +264,7 @@ const moveNodeAndChildren = (nodes: Node[], nodeId: string, deltaX: number, delt
 
 // Custom node component for expandable/collapsible behavior
 const CustomNode = memo(({ data, id }: NodeProps): React.ReactElement => {
-  const { setNodes, getNodes, setCenter, getZoom } = useReactFlow();
+  const { setNodes, getNodes, fitView } = useReactFlow();
   const nodeData = data as CustomNodeData;
   
   // Helper function to recursively hide all descendants
@@ -305,32 +359,28 @@ const CustomNode = memo(({ data, id }: NodeProps): React.ReactElement => {
       return repositionedNodes;
     });
 
-    // Center view on the expanded area after a slight delay to allow for node updates
+    // Dynamically zoom to frame whatever just became relevant, after a slight
+    // delay to let the node position/visibility updates above commit.
     setTimeout(() => {
       const updatedNodes = getNodes();
-      const expandedNode = updatedNodes.find(n => n.id === targetNodeId);
-      
-      if (expandedNode && expandedNode.data.expanded) {
-        // Find all child nodes of the expanded node
-        const childNodes = updatedNodes.filter(n => 
+      const targetNode = updatedNodes.find(n => n.id === targetNodeId);
+      if (!targetNode) return;
+
+      if (targetNode.data.expanded) {
+        // EXPANDED: zoom out just enough to frame the parent + its newly-revealed children
+        const childNodes = updatedNodes.filter(n =>
           n.data.parentNode === targetNodeId && !n.hidden
         );
-        
-        if (childNodes.length > 0) {
-          // Calculate the center point of the child nodes area
-          const childPositions = childNodes.map(n => ({ x: n.position.x, y: n.position.y }));
-          const avgX = childPositions.reduce((sum, pos) => sum + pos.x, 0) / childPositions.length;
-          const avgY = childPositions.reduce((sum, pos) => sum + pos.y, 0) / childPositions.length;
-          
-          // Center the view on the child nodes area with smooth animation
-          setCenter(avgX, avgY, { zoom: getZoom(), duration: 800 });
-        } else {
-          // Fallback: center on the parent node if no child nodes found
-          setCenter(expandedNode.position.x, expandedNode.position.y, { zoom: getZoom(), duration: 800 });
-        }
+        const fitIds = [targetNodeId, ...childNodes.map(n => n.id)];
+        fitView({ nodes: fitIds.map(nid => ({ id: nid })), padding: 0.3, duration: 600 });
+      } else {
+        // COLLAPSED: zoom back out to frame the node in the context of its parent
+        const parentId = targetNode.data.parentNode as string | undefined;
+        const fitIds = parentId ? [targetNodeId, parentId] : [targetNodeId];
+        fitView({ nodes: fitIds.map(nid => ({ id: nid })), padding: 0.4, duration: 600 });
       }
     }, 100);
-  }, [id, setNodes, getNodes, setCenter, getZoom]);
+  }, [id, setNodes, getNodes, fitView]);
   // Function to toggle read status
   const toggleReadStatus = useCallback(() => {
     if (nodeData.isRoot) return; // Don't toggle for root node
@@ -557,7 +607,7 @@ function MindMapContent() {
   const [mindMapTitle, setMindMapTitle] = useState<string>('Mind Map');
 
   // Track expanded topics in the mind map
-  const [expandedTopics, setExpandedTopics] = useState<string[]>(['central']);
+  const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
   // Track selected/focused node
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   // Active tab within the node detail panel
@@ -586,7 +636,7 @@ function MindMapContent() {
   const MAX_DESCRIPTION_RETRIES = 2;
   
   // React Flow instance ref for controlling view
-  const { getNodes, setCenter, getZoom } = useReactFlow();
+  const { getNodes, fitView } = useReactFlow();
   // State for the actual mind map data (to allow updating read status)
   const [localMindMapData, setLocalMindMapData] = useState<SidebarTopic[]>([]);
     // Update localMindMapData when mindMapData changes
@@ -914,7 +964,7 @@ function MindMapContent() {
                     ...node,
                     label: node.label,
                     isRoot: isRoot,
-                    expanded: isRoot, // Start with root expanded
+                    expanded: false, // Start fully collapsed — only the root node is visible until expanded
                     hasChildren: hasChildren,
                     canExpand: !isRoot && !hasChildren, // Leaf nodes (not root, no children) can be expanded
                     isRead: false,
@@ -926,7 +976,7 @@ function MindMapContent() {
                 };
               });
               
-              setNodes(reactFlowNodes);
+              setNodes(layoutNodesHierarchically(reactFlowNodes));
                 // Initialize the edges data for React Flow
               if (parsedData.edges) {
                 const reactFlowEdges = parsedData.edges.map((edge: any) => ({
@@ -1038,6 +1088,17 @@ function MindMapContent() {
 
     loadMindMapData();
   }, [params?.id]);
+
+  // The `fitView` prop on <ReactFlow> only fits once, at mount — before the
+  // async load above has populated real nodes/positions. Re-fit imperatively
+  // once loading finishes and the (now correctly spaced) nodes have rendered.
+  useEffect(() => {
+    if (isLoading) return;
+    const timeoutId = setTimeout(() => {
+      fitView({ padding: 0.2, duration: 400 });
+    }, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isLoading, fitView]);
   // Using type definitions from mind-map-utils.ts  // Using convertBackendDataToSidebarFormat from mind-map-utils.ts  // Using getFallbackData from mind-map-utils.ts
   // Function to initialize React Flow data
   const initializeReactFlowData = (data: any) => {
@@ -1060,7 +1121,7 @@ function MindMapContent() {
             ...node,
             label: node.label,
             isRoot: isRoot,
-            expanded: isRoot, // Start with root expanded
+            expanded: false, // Start fully collapsed — only the root node is visible until expanded
             hasChildren: hasChildren,
             canExpand: !isRoot && !hasChildren, // Leaf nodes (not root, no children) can be expanded
             isRead: false,
@@ -1072,8 +1133,8 @@ function MindMapContent() {
         };
       });
       
-      setNodes(reactFlowNodes);
-      
+      setNodes(layoutNodesHierarchically(reactFlowNodes));
+
       // Initialize the edges data for React Flow
       if (data.edges && Array.isArray(data.edges)) {        const reactFlowEdges = data.edges.map((edge: any) => ({
           id: edge.id || `${edge.source}-${edge.target}`,
@@ -1159,24 +1220,23 @@ function MindMapContent() {
     // Set the selected node
     setSelectedNode(topicId);
     
-    // Find the node in the mind map and center on it
+    // Find the node in the mind map and zoom in to focus on it
     const nodes = getNodes();
     const selectedNodeData = nodes.find(node => node.id === topicId);
     if (selectedNodeData) {
-      // Center the view on the selected node with smooth animation
-      setCenter(selectedNodeData.position.x, selectedNodeData.position.y, { zoom: getZoom(), duration: 800 });
+      fitView({ nodes: [{ id: topicId }], padding: 0.6, maxZoom: 1.5, duration: 800 });
     }
   };
     // Handle subtopic selection from sidebar
   const handleSubtopicSelect = (topicId: string, subtopicId: string) => {
     console.log('Subtopic selected:', topicId, subtopicId);
-    
+
     // Set the selected node
     setSelectedNode(subtopicId);
-    
-    // First ensure parent topic is expanded
+
+    // First ensure parent topic is expanded, repositioning to prevent overlap
     setNodes((nds) => {
-      return nds.map((node) => {
+      const updatedNodes = nds.map((node) => {
         // Expand the parent node
         if (node.id === topicId) {
           return {
@@ -1184,7 +1244,7 @@ function MindMapContent() {
             data: { ...node.data, expanded: true }
           };
         }
-        
+
         // Show this subtopic and other subtopics of the parent
         if (node.data.parentNode === topicId) {
           return {
@@ -1194,19 +1254,22 @@ function MindMapContent() {
         }
         return node;
       });
+
+      return calculateDynamicPositions(updatedNodes, topicId, true);
     });
-    
+
     // Add parent to expanded topics
     if (!expandedTopics.includes(topicId)) {
       setExpandedTopics(prev => [...prev, topicId]);
     }
-    
-    // Focus on the selected subtopic after a short delay to ensure nodes are rendered
+
+    // Zoom in to focus on the selected subtopic (with its parent for context)
+    // after a short delay to ensure nodes are rendered at their new positions
     setTimeout(() => {
       const nodes = getNodes();
       const selectedNodeData = nodes.find(node => node.id === subtopicId);
       if (selectedNodeData && !selectedNodeData.hidden) {
-        setCenter(selectedNodeData.position.x, selectedNodeData.position.y, { zoom: getZoom(), duration: 800 });
+        fitView({ nodes: [{ id: topicId }, { id: subtopicId }], padding: 0.5, maxZoom: 1.5, duration: 800 });
       }
     }, 100);
   };
@@ -1272,14 +1335,13 @@ function MindMapContent() {
     // Set the selected node
     setSelectedNode(nodeId);
     
-    // Find the node in the mind map and center on it
+    // Zoom in to focus tightly on the selected node
     const nodes = getNodes();
     const selectedNodeData = nodes.find(node => node.id === nodeId);
     if (selectedNodeData && !selectedNodeData.hidden) {
-      // Center the view on the selected node with smooth animation
-      setCenter(selectedNodeData.position.x, selectedNodeData.position.y, { zoom: getZoom(), duration: 800 });
+      fitView({ nodes: [{ id: nodeId }], padding: 0.6, maxZoom: 1.5, duration: 800 });
     }
-  }, [getNodes, setCenter, getZoom]);// Function to get content for selected node with AI-generated detailed theory
+  }, [getNodes, fitView]);// Function to get content for selected node with AI-generated detailed theory
   const getSelectedNodeContent = useCallback((nodeId: string | null) => {
     if (!nodeId || !backendData?.nodes) return null;
     
@@ -1915,9 +1977,9 @@ More detailed content will be available soon with comprehensive explanations, eq
       id: 'central',
       type: 'customNode',
       position: { x: 300, y: 200 },      
-      data: { 
-        label: mindMapTitle, 
-        expanded: true,
+      data: {
+        label: mindMapTitle,
+        expanded: false,
         hasChildren: mindMapData.length > 0,
         isRoot: true,
         isSelected: selectedNode === 'central',
@@ -2255,12 +2317,11 @@ More detailed content will be available soon with comprehensive explanations, eq
           return addSubtopicsToNode(prevData);
         });
 
-        // Center the view on the newly expanded area
+        // Zoom out just enough to frame the parent + its newly-generated sub-nodes
         setTimeout(() => {
           if (newNodes.length > 0) {
-            const avgX = newNodes.reduce((sum: number, node: any) => sum + node.position.x, 0) / newNodes.length;
-            const avgY = newNodes.reduce((sum: number, node: any) => sum + node.position.y, 0) / newNodes.length;
-            setCenter(avgX, avgY, { zoom: getZoom(), duration: 800 });
+            const fitIds = [nodeId, ...newNodes.map((n: any) => n.id)];
+            fitView({ nodes: fitIds.map(id => ({ id })), padding: 0.3, duration: 600 });
           }
         }, 100);
 
@@ -2289,7 +2350,7 @@ More detailed content will be available soon with comprehensive explanations, eq
         newSet.delete(nodeId);
         return newSet;
       });    }
-  }, [params?.id, expandingNodes, getNodes, nodeDescriptions, handleToggleReadStatus, handleNodeClick, setNodes, setEdges, setCenter, getZoom]);
+  }, [params?.id, expandingNodes, getNodes, nodeDescriptions, handleToggleReadStatus, handleNodeClick, setNodes, setEdges, fitView]);
 
   // Debug drag events
   const dragCounter = useRef(0);
