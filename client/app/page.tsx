@@ -28,7 +28,7 @@ export default function Home() {
 
   // Render a black screen matching client-side/server-side layout before mount
   if (!isMounted) {
-    return <div className="fixed inset-0 bg-neutral-950" />;
+    return <div className="fixed inset-0 bg-neutral-950" suppressHydrationWarning />;
   }
 
   // Show spiral intro on first visit
