@@ -4,6 +4,8 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import { apiService } from './api';
 import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { LemniscateBloom } from '@/components/ui/lemniscate-bloom';
 
 interface CustomUser {
   uid: string;
@@ -16,6 +18,8 @@ interface AuthContextType {
   user: CustomUser | null;
   loading: boolean;
   isAuthenticated: boolean;
+  isAuthenticating: boolean;
+  setIsAuthenticating: (val: boolean) => void;
   login: (idToken: string, user: any) => Promise<void>;
   logout: () => Promise<void>;
   refreshUserData?: () => Promise<void>;
@@ -26,6 +30,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isAuthenticated: false,
+  isAuthenticating: false,
+  setIsAuthenticating: () => {},
   login: async () => {},
   logout: async () => {},
   refreshUserData: async () => {},
@@ -44,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<CustomUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const router = useRouter();
     // Use a ref to track if we've already processed the initial auth state
   const hasProcessedInitialAuth = useRef(false);
@@ -127,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   const login = async (idToken: string, userData: any) => {
     try {
+      setIsAuthenticating(true);
       const response = await apiService.authenticateWithGoogle(idToken, userData);
       setUser(userData);
       setIsAuthenticated(true);
@@ -139,46 +147,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Only redirect to dashboard if user is on the home page (fresh sign-in)
       if (typeof window !== 'undefined' && window.location.pathname === '/') {
         window.location.href = '/dashboard';
+      } else {
+        setIsAuthenticating(false);
       }
     } catch (error) {
+      setIsAuthenticating(false);
       console.error('Login failed:', error);
       throw error;
     }
   };
 
   const logout = async () => {
-    try {
-      // Call backend logout first
-      await apiService.logout();
-      
-      // Clear local state immediately to prevent UI flickering
-      setUser(null);
-      setIsAuthenticated(false);
-      
-      // Sign out of Firebase (this will trigger the auth state change)
-      if (auth.currentUser) {
+    // apiService.logout() is fire-and-forget safe – it clears localStorage internally.
+    await apiService.logout();
+
+    // Clear React state
+    setUser(null);
+    setIsAuthenticated(false);
+    hasProcessedInitialAuth.current = false;
+
+    // Sign out of Firebase
+    if (auth.currentUser) {
+      try {
         await auth.signOut();
-      }
-      
-      // Ensure local storage is cleared
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('user');
-      }
-    } catch (error) {
-      console.error('Logout failed:', error);
-      // Even if backend logout fails, clear local state
-      setUser(null);      setIsAuthenticated(false);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('user');
-        localStorage.removeItem('firebaseUserId'); // Clear Firebase UID
-      }
-      if (auth.currentUser) {
-        await auth.signOut();
+      } catch (error) {
+        console.error('Firebase sign-out error (non-critical):', error);
       }
     }
-  };  useEffect(() => {
+  };
+
+  useEffect(() => {
     let isComponentMounted = true;
     
     // Check if user is already authenticated on page load
@@ -215,6 +213,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (firebaseUser && !hasProcessedInitialAuth.current) {
         // User just signed in via Firebase for the first time, authenticate with backend
+        setIsAuthenticating(true);
         try {
           const idToken = await firebaseUser.getIdToken();
           const userData = {
@@ -236,9 +235,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Only redirect to dashboard if user is on the home page (fresh sign-in)
           if (typeof window !== 'undefined' && window.location.pathname === '/') {
             window.location.href = '/dashboard';
+          } else {
+            setIsAuthenticating(false);
           }
         } catch (error) {
           console.error('Backend authentication failed:', error);
+          setIsAuthenticating(false);
         }
       } else if (!firebaseUser && hasProcessedInitialAuth.current) {
         // User signed out of Firebase, clean up our auth state
@@ -264,6 +266,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     loading,
     isAuthenticated,
+    isAuthenticating,
+    setIsAuthenticating,
     login,
     logout,
     refreshUserData, // Expose this function for manual refresh if needed
@@ -273,6 +277,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={value}>
       {children}
+      {isAuthenticating && <AuthLoadingOverlay />}
     </AuthContext.Provider>
+  );
+};
+
+const AuthLoadingOverlay = () => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md"
+    >
+      <motion.div 
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="flex flex-col items-center space-y-6"
+      >
+        {/* Lemniscate Bloom Loader */}
+        <div className="relative w-48 h-48">
+          <LemniscateBloom
+            className="w-full h-full text-cyan-400"
+            particleCount={70}
+            trailSpan={0.4}
+            durationMs={5600}
+            strokeWidth={4.8}
+            lemniscateA={20}
+            lemniscateBoost={7}
+            color="currentColor"
+          />
+        </div>
+        
+        <div className="space-y-1 text-center">
+          <h3 className="text-white font-medium text-lg tracking-wide">
+            Authenticating
+          </h3>
+          <p className="text-neutral-400 text-sm">
+            Setting up your secure session...
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 };

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { apiService } from '@/lib/api';
@@ -7,6 +7,7 @@ import { FloatingDock } from "@/components/ui/floating-dock";
 import { WavyBackground } from "@/components/ui/wavy-background";
 import BlackHoleLoader from "@/components/ui/black-hole-loader";
 import { GyanPointsDisplay } from "@/components/custom/GyanPointsDisplay";
+import { Confetti, type ConfettiRef } from "@/components/ui/confetti";
 import { Card, CardBody, Button, Input, Skeleton } from "@heroui/react";
 import toast from 'react-hot-toast';
 import {
@@ -41,8 +42,48 @@ export default function Dashboard() {
   const { user, loading, isAuthenticated, logout } = useAuth();
   const router = useRouter();
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [displayName, setDisplayName] = useState('');
+  const confettiRef = useRef<ConfettiRef>(null);
+
+  // Trigger confetti on first dashboard load after sign-in
+  useEffect(() => {
+    if (isAuthenticated && user && !loading && confettiRef.current) {
+      // Check if this is a new session (just signed in)
+      const confettiShown = sessionStorage.getItem('adhyayan-confetti-shown');
+      
+      if (!confettiShown) {
+        console.log('Triggering confetti!');
+        
+        // Mark as shown immediately to prevent multiple triggers
+        sessionStorage.setItem('adhyayan-confetti-shown', 'true');
+        
+        // Small delay to ensure page is loaded
+        const timer = setTimeout(() => {
+          // Fire a big burst from the center
+          confettiRef.current?.fire({
+            particleCount: 100,
+            spread: 70,
+            origin: { x: 0.5, y: 0.5 },
+            colors: ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'],
+          });
+
+          // Second burst slightly delayed for a fuller effect
+          setTimeout(() => {
+            confettiRef.current?.fire({
+              particleCount: 50,
+              spread: 100,
+              origin: { x: 0.5, y: 0.5 },
+              colors: ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'],
+            });
+          }, 250);
+        }, 500);
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAuthenticated, user, loading]);
 
   // Update display name when user changes or when profile is updated
   useEffect(() => {
@@ -84,6 +125,8 @@ export default function Dashboard() {
 
   const handleSignOut = async () => {
     try {
+      // Clear confetti flag so it triggers on next sign-in
+      sessionStorage.removeItem('adhyayan-confetti-shown');
       await logout();
       router.push('/');
     } catch (error) {
@@ -106,7 +149,15 @@ export default function Dashboard() {
     setImageError(true);
     setImageLoaded(false);
   };
-  if (loading) {
+  // Redirect unauthenticated users inside an effect to avoid calling router.push() during render
+  useEffect(() => {
+    if (!loading && (!isAuthenticated || !user)) {
+      setIsRedirecting(true);
+      router.push('/');
+    }
+  }, [loading, isAuthenticated, user, router]);
+
+  if (loading || isRedirecting) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <BlackHoleLoader />
@@ -115,7 +166,6 @@ export default function Dashboard() {
   }
 
   if (!isAuthenticated || !user) {
-    router.push('/');
     return null;
   }
   const dockLinks = [
@@ -155,8 +205,17 @@ export default function Dashboard() {
       href: "#",
       onClick: handleSignOut,
     },
-  ];return (
+  ];
+
+  return (
     <div className="min-h-screen relative">
+      {/* Confetti Canvas */}
+      <Confetti
+        ref={confettiRef}
+        className="fixed inset-0 z-[9999] pointer-events-none"
+        manualstart
+      />
+      
       <WavyBackground className="min-h-screen flex flex-col items-center justify-center p-8 relative">
           {/* Gyan Points Display - Top Right Corner */}
         <div className="fixed top-4 right-4 z-50 md:top-6 md:right-8 lg:right-12">

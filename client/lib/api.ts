@@ -204,10 +204,29 @@ class ApiService {
   }
 
   async logout() {
-    const response = await this.post('/auth/logout', {});
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    return response;
+    // Use raw fetch instead of this.post() to avoid JSON.parse crashing on
+    // HTML 404 responses when the backend has no /auth/logout endpoint.
+    // The token cleanup in `finally` is the source of truth regardless.
+    try {
+      const token = this.getToken();
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      // Silently swallow – local cleanup below is the source of truth.
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('firebaseUserId');
+      }
+    }
   }
 
   // Check if user is authenticated
