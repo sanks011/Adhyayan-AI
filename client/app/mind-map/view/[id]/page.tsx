@@ -2604,7 +2604,7 @@ More detailed content will be available soon with comprehensive explanations, eq
               elevateNodesOnSelect={false}
             >
               <Controls className="bg-neutral-800 text-white border-neutral-700" />
-              <Background color="#333" gap={16} size={1} />
+              <Background color="#555" gap={16} size={1.5} />
             </ReactFlow>
           </div>
         </div>
