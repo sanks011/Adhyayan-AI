@@ -15,40 +15,33 @@ export function CustomFeatures() {
           </p>
         </div>
         
-        <ul className="grid grid-cols-1 grid-rows-none gap-3 md:grid-cols-12 md:grid-rows-3 lg:gap-5 xl:max-h-[36rem] xl:grid-rows-2">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-12 lg:gap-5">
           <GridItem
-            area="md:[grid-area:1/1/2/7] xl:[grid-area:1/1/2/5]"
+            area="md:col-span-6"
             icon={<Map className="h-4 w-4 text-black dark:text-neutral-400" />}
             title="Interactive Mind Maps"
             description="Generate comprehensive mind maps from any syllabus. Visualize topics, subtopics, and connections in an interactive, draggable interface."
           />
 
           <GridItem
-            area="md:[grid-area:1/7/2/13] xl:[grid-area:2/1/3/5]"
+            area="md:col-span-6"
             icon={<BookOpen className="h-4 w-4 text-black dark:text-neutral-400" />}
             title="Detailed Topic Notes"
             description="Click on any topic node to access detailed notes. Mark topics as read as you progress through your learning journey."
           />
 
           <GridItem
-            area="md:[grid-area:2/1/3/7] xl:[grid-area:1/5/3/8]"
+            area="md:col-span-6"
             icon={<MessageSquare className="h-4 w-4 text-black dark:text-neutral-400" />}
             title="AI-Powered Chat Assistant"
             description="Ask questions, request explanations, or clarify concepts with our smart AI chat assistant integrated with each topic."
           />
 
           <GridItem
-            area="md:[grid-area:2/7/3/13] xl:[grid-area:1/8/2/13]"
+            area="md:col-span-6"
             icon={<Headphones className="h-4 w-4 text-black dark:text-neutral-400" />}
             title="Generated Podcasts"
             description="Convert any topic into an engaging podcast format with two-person dialogues for an immersive audio learning experience."
-          />
-
-          <GridItem
-            area="md:[grid-area:3/1/4/13] xl:[grid-area:2/8/3/13]"
-            icon={<Users className="h-4 w-4 text-black dark:text-neutral-400" />}
-            title="Collaborative Quizzes"
-            description="Create rooms, invite friends, and compete in real-time quizzes. Track progress with live leaderboards and enhance your learning."
           />
         </ul>
       </div>

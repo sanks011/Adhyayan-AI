@@ -345,10 +345,45 @@ class ApiService {
   
   // Method for getting quiz questions for mark-as-read verification
   async getMindMapNodeQuiz(nodeId: string, nodeDescription: string) {
-    return this.post('/mindmap/node-quiz', { 
-      nodeId, 
-      nodeDescription 
+    return this.post('/mindmap/node-quiz', {
+      nodeId,
+      nodeDescription
     });
+  }
+
+  // Method for auto-generating flashcards for a node's topic
+  async getMindMapNodeFlashcards(nodeId: string, nodeDescription: string) {
+    return this.post('/mindmap/node-flashcards', {
+      nodeId,
+      nodeDescription
+    });
+  }
+
+  // Get the user's saved self-note for a node
+  async getSelfNotes(mindMapId: string, nodeId: string) {
+    const response = await fetch(`${API_BASE_URL}/mindmap/${mindMapId}/node/${nodeId}/self-notes`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch note');
+    }
+    return response.json();
+  }
+
+  // Save the user's self-note for a node
+  async saveSelfNotes(mindMapId: string, nodeId: string, notes: string) {
+    const response = await fetch(`${API_BASE_URL}/mindmap/${mindMapId}/node/${nodeId}/self-notes`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ notes }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to save note');
+    }
+    return response.json();
   }
   
   // File upload method for syllabus

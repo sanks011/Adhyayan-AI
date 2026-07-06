@@ -491,25 +491,11 @@ Use the quiz feature to test your understanding and the AI chat to ask specific 
       href: "/dashboard",
     },
     {
-      title: "Quiz",
-      icon: (
-        <IconUsers className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-      ),
-      href: "/create-room",
-    },
-    {
       title: "Mind Map",
       icon: (
         <IconMap className="h-full w-full text-red-400 dark:text-red-400" />
       ),
       href: "/mind-map",
-    },
-    {
-      title: "Flash Cards",
-      icon: (
-        <IconList className="h-full w-full text-neutral-500 dark:text-neutral-300" />
-      ),
-      href: "/flashCard",
     },
     {
       title: "Settings",

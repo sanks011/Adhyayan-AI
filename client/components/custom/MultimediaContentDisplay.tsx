@@ -35,25 +35,34 @@ interface MultimediaContent {
   references: MultimediaReference[];
 }
 
+type MediaSection = 'content' | 'images' | 'videos' | 'references';
+
 interface MultimediaContentDisplayProps {
   content: string;
   multimedia?: MultimediaContent;
   className?: string;
+  // When set, only these sections render. Default = all (back-compatible).
+  only?: MediaSection[];
 }
 
 export const MultimediaContentDisplay: React.FC<MultimediaContentDisplayProps> = ({
   content,
   multimedia,
-  className
+  className,
+  only
 }) => {
+  const show = (section: MediaSection) => !only || only.includes(section);
+  // When a media section is isolated into its own tab, start it expanded
+  const isolated = (section: MediaSection) => !!only && only.length === 1 && only[0] === section;
+
   const [expandedSections, setExpandedSections] = useState<{
     images: boolean;
     videos: boolean;
     references: boolean;
   }>({
-    images: false,
-    videos: false,
-    references: false
+    images: isolated('images'),
+    videos: isolated('videos'),
+    references: isolated('references')
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -66,15 +75,17 @@ export const MultimediaContentDisplay: React.FC<MultimediaContentDisplayProps> =
   return (
     <div className={cn("space-y-6", className)}>
       {/* Main Content */}
-      <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-6">
-        <ContentFormatter content={content} className="w-full" />
-      </div>
+      {show('content') && (
+        <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-6">
+          <ContentFormatter content={content} className="w-full" />
+        </div>
+      )}
 
       {/* Multimedia Learning Resources */}
       {multimedia && (
         <div className="space-y-4">
           {/* Images Section */}
-          {multimedia.images && multimedia.images.length > 0 && (
+          {show('images') && multimedia.images && multimedia.images.length > 0 && (
             <div className="bg-neutral-800 border border-neutral-600 rounded-lg overflow-hidden">
               <button
                 onClick={() => toggleSection('images')}
@@ -134,7 +145,7 @@ export const MultimediaContentDisplay: React.FC<MultimediaContentDisplayProps> =
           )}
 
           {/* Videos Section */}
-          {multimedia.videos && multimedia.videos.length > 0 && (
+          {show('videos') && multimedia.videos && multimedia.videos.length > 0 && (
             <div className="bg-neutral-800 border border-neutral-600 rounded-lg overflow-hidden">
               <button
                 onClick={() => toggleSection('videos')}
@@ -186,7 +197,7 @@ export const MultimediaContentDisplay: React.FC<MultimediaContentDisplayProps> =
           )}
 
           {/* References Section */}
-          {multimedia.references && multimedia.references.length > 0 && (
+          {show('references') && multimedia.references && multimedia.references.length > 0 && (
             <div className="bg-neutral-800 border border-neutral-600 rounded-lg overflow-hidden">
               <button
                 onClick={() => toggleSection('references')}

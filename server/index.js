@@ -3,7 +3,6 @@ const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
-const Groq = require("groq-sdk");
 const { OpenAI } = require("openai"); // Add OpenAI import
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
@@ -69,18 +68,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Initialize Groq (keeping for backward compatibility)
-// Ensure GROQ_API_KEY is present; provide a fallback for development to avoid crashes
-if (!process.env.GROQ_API_KEY) {
-  console.warn(
-    "GROQ_API_KEY not found in environment variables. Using fallback key for development only."
-  );
-  // NOTE: This is NOT a real API key. Replace with a valid GROQ API key for production.
-  process.env.GROQ_API_KEY = "fallback_groq_api_key";
-}
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
 
 // Initialize OpenAI for mind map generation with proper timeouts
 const openai = new OpenAI({
@@ -100,15 +87,64 @@ const parsingOpenAI = new OpenAI({
   },
 });
 
-// Initialize Parsing AI Agent with dedicated API key from environment (keeping for backward compatibility)
-const parsingGroq = new Groq({
-  apiKey: process.env.PARSING_GROQ_API_KEY,
+// Initialize OpenAI for node expansion with dedicated API key and proper timeouts
+const expandOpenAI = new OpenAI({
+  apiKey: process.env.EXPAND_NODE_API_KEY,
+  maxRetries: 2,
+  httpAgent: {
+    keepAlive: true,
+  },
 });
+
+
+// Fallback provider (Groq) used when the primary OpenAI-tier client fails
+// (rate limit / auth / server error) — Groq's API is OpenAI-compatible, so
+// the same OpenAI SDK works with just a baseURL swap.
+const groqFallback = process.env.GROQ_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1",
+      maxRetries: 1,
+    })
+  : null;
+
+const GROQ_FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || "llama-3.3-70b-versatile";
+
+// Circuit breaker: once a primary client trips a fallback-eligible error
+// (quota exhausted, auth dead, 5xx), stop retrying it for the rest of this
+// process — go straight to Groq. Keyed per client so openai/parsingOpenAI/
+// expandOpenAI each trip independently.
+const disabledPrimaryClients = new WeakSet();
+
+// Wraps chat.completions.create with a fallback to Groq on rate-limit/auth/
+// server errors from the primary client. `model` in params is swapped for
+// the fallback model on retry; everything else is preserved.
+async function createChatCompletion(client, params) {
+  const isFallbackTarget = client === groqFallback;
+
+  if (!isFallbackTarget && groqFallback && disabledPrimaryClients.has(client)) {
+    return groqFallback.chat.completions.create({ ...params, model: GROQ_FALLBACK_MODEL });
+  }
+
+  try {
+    return await client.chat.completions.create(params);
+  } catch (err) {
+    const status = err?.status || err?.response?.status;
+    const isFallbackEligible = status === 429 || status === 401 || (status && status >= 500);
+    if (!groqFallback || isFallbackTarget || !isFallbackEligible) {
+      throw err;
+    }
+    if (!disabledPrimaryClients.has(client)) {
+      disabledPrimaryClients.add(client);
+      console.warn(`Primary OpenAI client failed (status ${status}) — disabling it for the rest of this process, routing to Groq/${GROQ_FALLBACK_MODEL} from now on`);
+    }
+    return groqFallback.chat.completions.create({ ...params, model: GROQ_FALLBACK_MODEL });
+  }
+}
 
 // Initialize ElevenLabs service for podcast generation
 const elevenLabsService = new ElevenLabsService(
-  process.env.ELEVENLABS_API_KEY,
-  process.env.GEMINI_API_KEY
+  process.env.ELEVENLABS_API_KEY
 );
 
 // Initialize Tavily Search API
@@ -650,7 +686,7 @@ app.post("/api/mindmap/create", verifyToken, checkDbConnection, async (req, res)
     const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
     const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
     
-    const completion = await openai.chat.completions.create({
+    const completion = await createChatCompletion(openai, {
       messages: [
         {
           role: "system",
@@ -1010,7 +1046,7 @@ app.post("/api/mindmap/parse-document", verifyToken, upload.single("document"), 
     const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
     const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
 
-    const completion = await parsingOpenAI.chat.completions.create({
+    const completion = await createChatCompletion(parsingOpenAI, {
       messages: [
         {
           role: "system",
@@ -1234,7 +1270,7 @@ app.post("/api/mindmap/generate", verifyToken, checkDbConnection, async (req, re
 
     let parsingCompletion;
     try {
-parsingCompletion = await parsingOpenAI.chat.completions.create({
+parsingCompletion = await createChatCompletion(parsingOpenAI, {
   messages: [
     {
       role: "system",
@@ -1604,7 +1640,7 @@ RESPOND WITH VALID JSON ONLY:`,
     console.log("Generating mind map from parsed structure...");
     let mindMapCompletion;
     try {
-mindMapCompletion = await openai.chat.completions.create({
+mindMapCompletion = await createChatCompletion(openai, {
   messages: [
     {
       role: "system",
@@ -2058,11 +2094,6 @@ app.post("/api/mindmap/node-description", verifyToken, async (req, res) => {
     const imageResults = images.status === 'fulfilled' ? images.value : [];
     const videoResults = videos.status === 'fulfilled' ? videos.value : [];
 
-    // Initialize Groq client with API key from environment variables
-    const groq = new Groq({
-      apiKey: process.env.DESCRIPTION_GROQ_API_KEY,
-    });
-
     let nodeDescription;
     try {
       // Formulate context based on syllabus and node hierarchy
@@ -2079,7 +2110,7 @@ app.post("/api/mindmap/node-description", verifyToken, async (req, res) => {
         ).join('\n')}` : '';
 
       // Create the prompt for the AI
-      nodeDescription = await groq.chat.completions.create({
+      nodeDescription = await createChatCompletion(openai, {
         messages: [
           {
             role: "system",
@@ -2125,13 +2156,13 @@ ${webContext}
 Please provide a 350-450 word detailed description with proper formatting, including any necessary equations (using KaTeX/LaTeX syntax), code examples, or visual descriptions as appropriate for this specific topic.`,
           }
         ],
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         temperature: 0.2,
         max_tokens: 1200,
         top_p: 0.9
       });
     } catch (descriptionError) {
-      console.error("Error from Groq API:", descriptionError.message);
+      console.error("Error from OpenAI API:", descriptionError.message);
       return res.status(500).json({
         success: false,
         error: "Failed to generate node description",
@@ -2364,19 +2395,11 @@ app.post("/api/mindmap/node-questions", verifyToken, async (req, res) => {
     console.log(`Generating contextual questions for node: ${nodeId}`);
 
     try {
-      // Use the dedicated Gemini API key for question generation
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.QUERY_GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {                    text: `You are an AI tutor that generates engaging questions about educational content that a student might have.
+      const completion = await createChatCompletion(openai, {
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI tutor that generates engaging questions about educational content that a student might have.
 
 Given the following educational content about "${nodeId}", generate exactly 5 relevant questions that a student might ask after reading this content.
 
@@ -2387,50 +2410,43 @@ The questions should:
 4. Be specific to the content provided
 5. Encourage critical thinking
 
-Content:
-${nodeDescription}
-
-IMPORTANT: Return ONLY a valid JSON array with exactly 5 question strings. Do not include any markdown formatting, code blocks, or explanations. Do not wrap the response in backticks or any other formatting.
+IMPORTANT: Return ONLY a valid JSON array with exactly 5 question strings. Do not include any markdown formatting, code blocks, or explanations.
 
 Example of the exact format required:
-["What is the main purpose of this process?", "How does this relate to other concepts?", "What factors influence this mechanism?", "Can you provide a real-world example?", "What would happen if this process failed?"]
+["What is the main purpose of this process?", "How does this relate to other concepts?", "What factors influence this mechanism?", "Can you provide a real-world example?", "What would happen if this process failed?"]`
+          },
+          {
+            role: "user",
+            content: `Content:\n${nodeDescription}`
+          }
+        ],
+        model: "gpt-4o-mini",
+        temperature: 0.1,
+        max_tokens: 500,
+        response_format: { type: "json_object" }
+      });
 
-Your response must be a valid JSON array that can be parsed directly:`
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 500,
-              topP: 0.8,
-              topK: 10
-            }
-          }),
-        }
-      );
-
-      const data = await response.json();      // Extract the generated content from Gemini response
-      let questionText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+      let questionText = completion.choices[0]?.message?.content || '{"questions": []}';
       
-      // Clean up the response - remove markdown code blocks if present
+      // Clean up the response
       questionText = questionText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       
-      // Parse the JSON array of questions or return default questions if parsing fails
+      // Parse the JSON
       let questions;
       try {
-        questions = JSON.parse(questionText);
-        
-        // Validate that we got an array
-        if (!Array.isArray(questions)) {
-          console.log("Response is not an array, using default questions");
+        const parsed = JSON.parse(questionText);
+        if (Array.isArray(parsed)) {
+          questions = parsed;
+        } else if (parsed.questions && Array.isArray(parsed.questions)) {
+          questions = parsed.questions;
+        } else {
           questions = [];
         }
         
         // Ensure we have exactly 5 questions and they are all strings
         questions = questions.filter(q => typeof q === 'string' && q.trim().length > 0).slice(0, 5);
         
-        // Fill with default questions if we don't have enough (including if empty array)
+        // Fill with default questions if we don't have enough
         if (questions.length < 5) {
           const defaultQuestions = [
             "Tell me more about this topic",
@@ -2439,17 +2455,12 @@ Your response must be a valid JSON array that can be parsed directly:`
             "Can you explain this in simple terms?",
             "What should I focus on learning?"
           ];
-          
-          console.log(`Only ${questions.length} valid questions generated, filling with defaults`);
-          
           while (questions.length < 5) {
             questions.push(defaultQuestions[questions.length] || "What else should I know?");
           }
         }
-        
       } catch (parseError) {
         console.error("Failed to parse questions response:", parseError);
-        console.log("Raw response text:", questionText);
         questions = [
           "Tell me more about this topic",
           "What are the key concepts here?",
@@ -2465,7 +2476,7 @@ Your response must be a valid JSON array that can be parsed directly:`
       });
 
     } catch (apiError) {
-      console.error("Error calling Gemini API:", apiError);
+      console.error("Error calling OpenAI API:", apiError);
       
       // Return default questions on API error
       return res.json({
@@ -2504,25 +2515,14 @@ app.post("/api/mindmap/chat-response", verifyToken, async (req, res) => {
     console.log(`Generating chat response for node ${nodeId} and message: ${userMessage.substring(0, 50)}...`);
 
     try {
-      // Use the dedicated Gemini API key for responses
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.QUERY_GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `You are a helpful and knowledgeable AI tutor specialized in educational content. You need to respond to a user's question about a specific topic.
+      const completion = await createChatCompletion(openai, {
+        messages: [
+          {
+            role: "system",
+            content: `You are a helpful and knowledgeable AI tutor specialized in educational content. You need to respond to a user's question about a specific topic.
 
 Topic Content:
 ${nodeDescription}
-
-User Question: "${userMessage}"
 
 Provide a clear, informative, and educational response to the user's question. Your response should:
 1. Be comprehensive and educational (200-300 words)
@@ -2535,26 +2535,22 @@ Provide a clear, informative, and educational response to the user's question. Y
 8. Provide specific examples or applications if relevant
 
 Your tone should be that of a knowledgeable and engaging tutor who's passionate about helping students understand the material.`
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 1024,
-              topP: 0.9
-            }
-          }),
-        }
-      );
+          },
+          {
+            role: "user",
+            content: `User Question: "${userMessage}"`
+          }
+        ],
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 1024,
+        top_p: 0.9
+      });
 
-      const data = await response.json();
-
-      // Extract the generated content from Gemini response
-      const responseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const responseContent = completion.choices[0]?.message?.content || '';
       
       if (!responseContent) {
-        throw new Error("Empty response from Gemini API");
+        throw new Error("Empty response from OpenAI API");
       }
 
       return res.json({
@@ -2563,7 +2559,7 @@ Your tone should be that of a knowledgeable and engaging tutor who's passionate 
       });
 
     } catch (apiError) {
-      console.error("Error calling Gemini API for chat response:", apiError);
+      console.error("Error calling OpenAI API for chat response:", apiError);
       
       // Return default response on API error
       return res.json({
@@ -2578,6 +2574,221 @@ Your tone should be that of a knowledgeable and engaging tutor who's passionate 
       error: "Failed to generate response",
       details: error.message,
     });
+  }
+});
+
+// Mind Map Node Quiz Generator - Auto-generates a multiple-choice quiz for a node's topic
+app.post("/api/mindmap/node-quiz", verifyToken, async (req, res) => {
+  try {
+    const { nodeId, nodeDescription } = req.body;
+
+    if (!nodeId || !nodeDescription) {
+      return res.status(400).json({
+        success: false,
+        error: "Node ID and description are required",
+      });
+    }
+
+    console.log(`Generating quiz for node: ${nodeId}`);
+
+    const completion = await createChatCompletion(openai, {
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI tutor that writes multiple-choice quizzes to test understanding of educational content.
+
+Given the educational content, generate exactly 5 multiple-choice questions.
+
+Each question must:
+1. Have exactly 4 answer options
+2. Have exactly one correct option
+3. Test genuine understanding (not trivia), ranging from recall to application
+4. Include a short explanation of why the correct answer is correct
+
+IMPORTANT: Return ONLY valid JSON in this exact shape, no markdown or code fences:
+{"questions":[{"question":"...","options":["...","...","...","..."],"correctIndex":0,"explanation":"..."}]}`
+        },
+        {
+          role: "user",
+          content: `Content:\n${nodeDescription}`
+        }
+      ],
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_tokens: 1200,
+      response_format: { type: "json_object" }
+    });
+
+    let raw = completion.choices[0]?.message?.content || '{"questions": []}';
+    raw = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+    let questions = [];
+    try {
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : parsed.questions;
+      if (Array.isArray(list)) {
+        questions = list
+          .filter(q => q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length >= 2)
+          .map(q => ({
+            question: q.question,
+            options: q.options.slice(0, 4).map(String),
+            correctIndex: Number.isInteger(q.correctIndex) ? Math.max(0, Math.min(q.correctIndex, q.options.length - 1)) : 0,
+            explanation: typeof q.explanation === 'string' ? q.explanation : ''
+          }))
+          .slice(0, 5);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse quiz response:", parseError);
+    }
+
+    if (questions.length === 0) {
+      return res.status(502).json({ success: false, error: "Could not generate a quiz for this topic. Please try again." });
+    }
+
+    return res.json({ success: true, questions });
+  } catch (error) {
+    console.error("Error generating node quiz:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate quiz",
+      details: error.message,
+    });
+  }
+});
+
+// Mind Map Node Flashcards Generator - Auto-generates flashcards for a node's topic
+app.post("/api/mindmap/node-flashcards", verifyToken, async (req, res) => {
+  try {
+    const { nodeId, nodeDescription } = req.body;
+
+    if (!nodeId || !nodeDescription) {
+      return res.status(400).json({
+        success: false,
+        error: "Node ID and description are required",
+      });
+    }
+
+    console.log(`Generating flashcards for node: ${nodeId}`);
+
+    const completion = await createChatCompletion(openai, {
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI tutor that writes study flashcards from educational content.
+
+Given the educational content, generate exactly 8 flashcards.
+
+Each flashcard must:
+1. Have a concise "question" prompt (a term, concept, or question)
+2. Have a clear "answer" (the definition or explanation)
+3. Cover the most important concepts in the content
+
+IMPORTANT: Return ONLY valid JSON in this exact shape, no markdown or code fences:
+{"flashcards":[{"question":"...","answer":"..."}]}`
+        },
+        {
+          role: "user",
+          content: `Content:\n${nodeDescription}`
+        }
+      ],
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_tokens: 1200,
+      response_format: { type: "json_object" }
+    });
+
+    let raw = completion.choices[0]?.message?.content || '{"flashcards": []}';
+    raw = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+    let flashcards = [];
+    try {
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : parsed.flashcards;
+      if (Array.isArray(list)) {
+        flashcards = list
+          .filter(c => c && typeof c.question === 'string' && typeof c.answer === 'string')
+          .map(c => ({ question: c.question, answer: c.answer }))
+          .slice(0, 12);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse flashcards response:", parseError);
+    }
+
+    if (flashcards.length === 0) {
+      return res.status(502).json({ success: false, error: "Could not generate flashcards for this topic. Please try again." });
+    }
+
+    return res.json({ success: true, flashcards });
+  } catch (error) {
+    console.error("Error generating node flashcards:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate flashcards",
+      details: error.message,
+    });
+  }
+});
+
+// Get a user's self-note for a specific node
+app.get("/api/mindmap/:mindMapId/node/:nodeId/self-notes", verifyToken, async (req, res) => {
+  try {
+    const { mindMapId, nodeId } = req.params;
+    const userId = req.user.uid;
+
+    if (!mindMapId || !nodeId) {
+      return res.status(400).json({ success: false, error: "Mind map ID and node ID are required" });
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db("adhyayan_ai");
+
+    const notesDoc = await db.collection("user_notes").findOne({ userId, mindMapId });
+    await client.close();
+
+    const notes = notesDoc && notesDoc.notes ? (notesDoc.notes[nodeId] || "") : "";
+    res.json({ success: true, notes });
+  } catch (error) {
+    console.error("Error fetching self-note:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch note", details: error.message });
+  }
+});
+
+// Save a user's self-note for a specific node
+app.put("/api/mindmap/:mindMapId/node/:nodeId/self-notes", verifyToken, async (req, res) => {
+  try {
+    const { mindMapId, nodeId } = req.params;
+    const { notes } = req.body;
+    const userId = req.user.uid;
+
+    if (!mindMapId || !nodeId) {
+      return res.status(400).json({ success: false, error: "Mind map ID and node ID are required" });
+    }
+    if (typeof notes !== 'string') {
+      return res.status(400).json({ success: false, error: "notes must be a string" });
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db("adhyayan_ai");
+    const notesCollection = db.collection("user_notes");
+
+    const query = { userId, mindMapId };
+    let notesDoc = await notesCollection.findOne(query);
+    if (!notesDoc) {
+      notesDoc = { userId, mindMapId, notes: {}, createdAt: new Date(), updatedAt: new Date() };
+    }
+    notesDoc.notes = notesDoc.notes || {};
+    notesDoc.notes[nodeId] = notes;
+    notesDoc.updatedAt = new Date();
+
+    await notesCollection.replaceOne(query, notesDoc, { upsert: true });
+    await client.close();
+
+    res.json({ success: true, message: "Note saved", nodeId });
+  } catch (error) {
+    console.error("Error saving self-note:", error);
+    res.status(500).json({ success: false, error: "Failed to save note", details: error.message });
   }
 });
 
@@ -2730,21 +2941,14 @@ app.post("/api/mindmap/expand-node", verifyToken, async (req, res) => {
       parentSubject = `Academic Subject (infer from "${nodeTitle}")`;
       console.log(`No DB: Will let OpenAI intelligently determine domain from node title: "${nodeTitle}"`);
     }try {
-      // Use OpenAI with dedicated API key for node expansion
-      const expandOpenAI = new OpenAI({
-        apiKey: process.env.EXPAND_NODE_API_KEY,
-        maxRetries: 2,
-        httpAgent: {
-          keepAlive: true,
-        },
-      });      // Log the final context being sent to AI for domain validation
+      // Log the final context being sent to AI for domain validation
       console.log(`🎯 CONTEXT SUMMARY FOR AI:
         - Node Title: "${nodeTitle}"
         - Subject Context: "${subjectContext}"
         - Mind Map ID: ${mindMapId}
         - AI Task: Intelligently determine domain from node title and generate appropriate sub-topics`);
 
-      const completion = await expandOpenAI.chat.completions.create({
+      const completion = await createChatCompletion(expandOpenAI, {
         messages: [
           {            role: "system",
             content: `You are an exceptionally advanced educational AI specialized in creating deep, hierarchically structured learning pathways. You possess the knowledge architecture of the world's best textbook authors, curriculum designers, and educational specialists. Your mission is to expand educational topics by creating TRUE NESTED HIERARCHIES of knowledge that represent how topics are ACTUALLY taught and learned in depth.
@@ -3262,222 +3466,7 @@ Generate sub-topics that represent genuine educational depth - the kind that wou
   }
 });
 
-// Mind Map Node Quiz Generator Endpoint - Generates quiz questions for mark-as-read verification
-app.post("/api/mindmap/node-quiz", verifyToken, async (req, res) => {
-  try {
-    const { nodeId, nodeDescription } = req.body;
 
-    if (!nodeId || !nodeDescription) {
-      return res.status(400).json({
-        success: false,
-        error: "Node ID and description are required",
-      });
-    }
-
-    console.log(`Generating quiz questions for node: ${nodeId}`);    try {
-      // Use OpenAI for quiz generation
-      const quizOpenAI = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-        maxRetries: 2,
-      });
-
-      const completion = await quizOpenAI.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: `You are an AI tutor that creates quiz questions to test student understanding of educational content.
-
-You will generate exactly 3 multiple-choice questions to verify that the student has properly understood the material.
-
-Requirements for each question:
-1. Should test genuine understanding, not just memorization
-2. Should be directly related to the provided content
-3. Must have exactly 4 options (A, B, C, D)
-4. Only ONE option should be correct
-5. Questions should be at an appropriate difficulty level - not too easy, not too hard
-6. Avoid trick questions or overly complex wording
-
-IMPORTANT: Return ONLY a valid JSON object in the exact format below. Do not include any markdown formatting, code blocks, or explanations.
-
-Required format:
-{
-  "questions": [
-    {
-      "question": "Question text here?",
-      "options": {
-        "A": "First option",
-        "B": "Second option", 
-        "C": "Third option",
-        "D": "Fourth option"
-      },
-      "correct": "A",
-      "explanation": "Brief explanation of why this answer is correct"
-    }
-  ]
-}
-
-Your response must be valid JSON that can be parsed directly.`
-          },
-          {
-            role: "user",
-            content: `Generate exactly 3 multiple-choice questions based on this educational content about "${nodeId}":
-
-Content:
-${nodeDescription}
-
-Create questions that test genuine understanding of the key concepts, with appropriate difficulty level.`
-          }
-        ],
-        model: "gpt-3.5-turbo",
-        temperature: 0.2,
-        max_tokens: 1000,
-        response_format: { type: "json_object" }
-      });
-
-      // Extract the generated content from OpenAI response
-      let quizText = completion.choices[0]?.message?.content || '{"questions": []}';
-      
-      // Clean up the response - remove markdown code blocks if present
-      quizText = quizText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-      
-      // Parse the JSON quiz or return default questions if parsing fails
-      let quizData;
-      try {
-        quizData = JSON.parse(quizText);
-        
-        // Validate that we got the expected structure
-        if (!quizData.questions || !Array.isArray(quizData.questions) || quizData.questions.length === 0) {
-          throw new Error("Invalid response format - missing questions array");
-        }
-        
-        // Validate each question has the required structure
-        quizData.questions = quizData.questions.filter(q => 
-          q.question && q.options && q.correct && 
-          typeof q.question === 'string' &&
-          typeof q.options === 'object' &&
-          typeof q.correct === 'string' &&
-          q.options.A && q.options.B && q.options.C && q.options.D
-        ).slice(0, 3); // Ensure we have at most 3 questions
-        
-        if (quizData.questions.length < 3) {
-          // Fill with generic questions if we don't have enough
-          while (quizData.questions.length < 3) {
-            const questionNum = quizData.questions.length + 1;
-            quizData.questions.push({
-              question: `What is a key concept from this topic that you should remember?`,
-              options: {
-                A: "I understand the main concepts",
-                B: "I need to review more",
-                C: "I'm not sure about this topic",
-                D: "I haven't read the content carefully"
-              },
-              correct: "A",
-              explanation: "Understanding the main concepts is essential for mastering this topic."
-            });
-          }
-        }
-        
-      } catch (parseError) {
-        console.error("Failed to parse quiz response:", parseError);
-        console.log("Raw response text:", quizText);
-        
-        // Return default quiz questions
-        quizData = {
-          questions: [
-            {
-              question: "Have you carefully read and understood the main concepts of this topic?",
-              options: {
-                A: "Yes, I understand the core concepts",
-                B: "I skimmed through it",
-                C: "I haven't read it yet",
-                D: "I'm confused about the content"
-              },
-              correct: "A",
-              explanation: "Careful reading and understanding is required to mark a topic as complete."
-            },
-            {
-              question: "Can you explain or apply the key ideas from this topic?",
-              options: {
-                A: "Yes, I can explain and apply the concepts",
-                B: "I remember some parts",
-                C: "I need to review again",
-                D: "I don't understand the concepts"
-              },
-              correct: "A",
-              explanation: "Being able to explain and apply concepts shows true understanding."
-            },
-            {
-              question: "Do you feel confident about your knowledge of this topic?",
-              options: {
-                A: "Yes, I'm confident in my understanding",
-                B: "Somewhat confident",
-                C: "Not very confident",
-                D: "I'm not confident at all"
-              },
-              correct: "A",
-              explanation: "Confidence in your understanding indicates you've mastered the topic."
-            }
-          ]
-        };
-      }
-
-      return res.json({
-        success: true,
-        quiz: quizData
-      });    } catch (apiError) {
-      console.error("Error calling OpenAI API for quiz generation:", apiError);
-      
-      // Return default quiz on API error
-      return res.json({
-        success: true,
-        quiz: {
-          questions: [
-            {
-              question: "Have you carefully read and understood the main concepts of this topic?",
-              options: {
-                A: "Yes, I understand the core concepts",
-                B: "I skimmed through it",
-                C: "I haven't read it yet",
-                D: "I'm confused about the content"
-              },
-              correct: "A",
-              explanation: "Careful reading and understanding is required to mark a topic as complete."
-            },
-            {
-              question: "Can you explain or apply the key ideas from this topic?",
-              options: {
-                A: "Yes, I can explain and apply the concepts",
-                B: "I remember some parts",
-                C: "I need to review again",
-                D: "I don't understand the concepts"
-              },
-              correct: "A",
-              explanation: "Being able to explain and apply concepts shows true understanding."
-            },
-            {
-              question: "Do you feel confident about your knowledge of this topic?",
-              options: {
-                A: "Yes, I'm confident in my understanding",
-                B: "Somewhat confident",
-                C: "Not very confident",
-                D: "I'm not confident at all"
-              },
-              correct: "A",
-              explanation: "Confidence in your understanding indicates you've mastered the topic."
-            }
-          ]
-        }
-      });
-    }
-  } catch (error) {
-    console.error("Error generating node quiz:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to generate quiz",
-      details: error.message,
-    });
-  }
-});
 
 // Global error handling middleware (must be last)
 app.use((err, req, res, next) => {

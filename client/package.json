@@ -42,7 +42,6 @@
     "lenis": "^1.0.42",
     "lucide": "^0.513.0",
     "lucide-react": "^0.513.0",
-    "mongodb": "^6.17.0",
     "motion": "^12.18.1",
     "next": "^15.5.20",
     "nodemailer": "^7.0.3",

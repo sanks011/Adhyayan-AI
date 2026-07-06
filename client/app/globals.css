@@ -371,6 +371,14 @@ button:focus {
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
+/* Dragging updates node position every frame — the transition above would
+   ease the node toward each new position while the connected edge (an SVG
+   path recomputed straight from the live position) snaps instantly,
+   making the edge visibly detach from the node mid-drag. */
+.react-flow__node.dragging {
+  transition: none !important;
+}
+
 /* Smooth edge animations */
 .react-flow__edge {
   transition: all 0.3s ease-in-out !important;

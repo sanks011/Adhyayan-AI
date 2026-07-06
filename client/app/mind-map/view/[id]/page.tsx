@@ -5,10 +5,13 @@ import { useAuth } from '@/lib/auth-context';
 import { apiService } from '@/lib/api';
 import { FloatingDock } from "@/components/ui/floating-dock";
 import { MindMapSidebar } from "@/components/custom/MindMapSidebar";
-import { QuizModal } from "@/components/custom/QuizModal";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import { MultimediaContentDisplay } from "@/components/custom/MultimediaContentDisplay";
+import { NodeSelfNotesTab } from "@/components/custom/NodeSelfNotesTab";
+import { NodeQuizTab } from "@/components/custom/NodeQuizTab";
+import { NodeFlashcardsTab } from "@/components/custom/NodeFlashcardsTab";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { convertBackendDataToSidebarFormat, getFallbackData, generateFallbackMindMapData, BackendNode, BackendData, SidebarTopic, SidebarSubtopic } from "@/lib/mind-map-utils";
 import Head from 'next/head';
@@ -47,7 +50,26 @@ import {
   IconPlayerPlay,
   IconLoader2,
   IconCheck,
+  IconFileText,
+  IconPencil,
+  IconMessageCircle,
+  IconHelpCircle,
+  IconCards,
+  IconVideo,
+  IconPhoto,
 } from "@tabler/icons-react";
+
+// Tabs for the node detail panel (icon-only bar with tooltips + active label)
+const NODE_TABS: { key: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: 'notes', label: 'Notes', icon: IconFileText },
+  { key: 'selfnotes', label: 'Self Notes', icon: IconPencil },
+  { key: 'chat', label: 'AI Chat', icon: IconMessageCircle },
+  { key: 'quiz', label: 'Quiz', icon: IconHelpCircle },
+  { key: 'flashcards', label: 'Flashcards', icon: IconCards },
+  { key: 'videos', label: 'Videos', icon: IconVideo },
+  { key: 'images', label: 'Images', icon: IconPhoto },
+  { key: 'podcast', label: 'Podcast', icon: IconHeadphones },
+];
 
 // Define the data structure for the custom node
 type CustomNodeData = {
@@ -65,6 +87,60 @@ type CustomNodeData = {
   onNodeClick?: (nodeId: string) => void;
   onExpandNode?: (nodeId: string) => void;
 }
+
+// Lay out nodes hierarchically by parentNode so siblings never overlap.
+// Saved/loaded positions are never trusted here — dragged positions aren't
+// persisted back to the backend (see handleNodeDragStop), so any position
+// coming from storage is stale generation-time data that can collide.
+const layoutNodesHierarchically = (nodes: Node[]): Node[] => {
+  const NODE_HEIGHT = 140;
+  const VERTICAL_SPACING = 40;
+  const HORIZONTAL_OFFSET = 350;
+  const STEP = NODE_HEIGHT + VERTICAL_SPACING;
+
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const childrenOf = new Map<string, Node[]>();
+  let root: Node | undefined;
+
+  nodes.forEach(node => {
+    const parentId = node.data?.parentNode as string | undefined;
+    if (!parentId) {
+      if (!root) root = node;
+      return;
+    }
+    if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+    childrenOf.get(parentId)!.push(node);
+  });
+
+  if (!root) return nodes;
+
+  const positioned = new Map<string, { x: number; y: number }>();
+  positioned.set(root.id, root.position || { x: 300, y: 200 });
+
+  const queue = [root.id];
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const parentPos = positioned.get(parentId)!;
+    const children = childrenOf.get(parentId) || [];
+    if (children.length === 0) continue;
+
+    const groupHeight = (children.length - 1) * STEP;
+    const startY = parentPos.y - groupHeight / 2;
+
+    children.forEach((child, index) => {
+      positioned.set(child.id, {
+        x: parentPos.x + HORIZONTAL_OFFSET,
+        y: startY + index * STEP,
+      });
+      queue.push(child.id);
+    });
+  }
+
+  return nodes.map(node => ({
+    ...node,
+    position: positioned.get(node.id) || node.position || { x: 0, y: 0 },
+  }));
+};
 
 // Utility function to calculate dynamic node positions to prevent overlaps
 const calculateDynamicPositions = (nodes: Node[], changedNodeId: string, isExpanding: boolean) => {
@@ -188,7 +264,7 @@ const moveNodeAndChildren = (nodes: Node[], nodeId: string, deltaX: number, delt
 
 // Custom node component for expandable/collapsible behavior
 const CustomNode = memo(({ data, id }: NodeProps): React.ReactElement => {
-  const { setNodes, getNodes, setCenter, getZoom } = useReactFlow();
+  const { setNodes, getNodes, fitView } = useReactFlow();
   const nodeData = data as CustomNodeData;
   
   // Helper function to recursively hide all descendants
@@ -283,32 +359,28 @@ const CustomNode = memo(({ data, id }: NodeProps): React.ReactElement => {
       return repositionedNodes;
     });
 
-    // Center view on the expanded area after a slight delay to allow for node updates
+    // Dynamically zoom to frame whatever just became relevant, after a slight
+    // delay to let the node position/visibility updates above commit.
     setTimeout(() => {
       const updatedNodes = getNodes();
-      const expandedNode = updatedNodes.find(n => n.id === targetNodeId);
-      
-      if (expandedNode && expandedNode.data.expanded) {
-        // Find all child nodes of the expanded node
-        const childNodes = updatedNodes.filter(n => 
+      const targetNode = updatedNodes.find(n => n.id === targetNodeId);
+      if (!targetNode) return;
+
+      if (targetNode.data.expanded) {
+        // EXPANDED: zoom out just enough to frame the parent + its newly-revealed children
+        const childNodes = updatedNodes.filter(n =>
           n.data.parentNode === targetNodeId && !n.hidden
         );
-        
-        if (childNodes.length > 0) {
-          // Calculate the center point of the child nodes area
-          const childPositions = childNodes.map(n => ({ x: n.position.x, y: n.position.y }));
-          const avgX = childPositions.reduce((sum, pos) => sum + pos.x, 0) / childPositions.length;
-          const avgY = childPositions.reduce((sum, pos) => sum + pos.y, 0) / childPositions.length;
-          
-          // Center the view on the child nodes area with smooth animation
-          setCenter(avgX, avgY, { zoom: getZoom(), duration: 800 });
-        } else {
-          // Fallback: center on the parent node if no child nodes found
-          setCenter(expandedNode.position.x, expandedNode.position.y, { zoom: getZoom(), duration: 800 });
-        }
+        const fitIds = [targetNodeId, ...childNodes.map(n => n.id)];
+        fitView({ nodes: fitIds.map(nid => ({ id: nid })), padding: 0.3, duration: 600 });
+      } else {
+        // COLLAPSED: zoom back out to frame the node in the context of its parent
+        const parentId = targetNode.data.parentNode as string | undefined;
+        const fitIds = parentId ? [targetNodeId, parentId] : [targetNodeId];
+        fitView({ nodes: fitIds.map(nid => ({ id: nid })), padding: 0.4, duration: 600 });
       }
     }, 100);
-  }, [id, setNodes, getNodes, setCenter, getZoom]);
+  }, [id, setNodes, getNodes, fitView]);
   // Function to toggle read status
   const toggleReadStatus = useCallback(() => {
     if (nodeData.isRoot) return; // Don't toggle for root node
@@ -535,9 +607,11 @@ function MindMapContent() {
   const [mindMapTitle, setMindMapTitle] = useState<string>('Mind Map');
 
   // Track expanded topics in the mind map
-  const [expandedTopics, setExpandedTopics] = useState<string[]>(['central']);
+  const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
   // Track selected/focused node
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  // Active tab within the node detail panel
+  const [activeNodeTab, setActiveNodeTab] = useState<string>('notes');
   // Track AI-expanded nodes and their sub-nodes
   const [expandedNodes, setExpandedNodes] = useState<Record<string, any[]>>({});
   const [expandingNodes, setExpandingNodes] = useState<Set<string>>(new Set());
@@ -551,18 +625,18 @@ function MindMapContent() {
   const [chatMessages, setChatMessages] = useState<Array<{id: string, type: 'user' | 'ai', content: string, timestamp: Date}>>([]);
   const [isAiTyping, setIsAiTyping] = useState(false);
   
-  // Quiz modal state for mark-as-read functionality
-  const [showQuizModal, setShowQuizModal] = useState(false);
-  const [pendingReadNode, setPendingReadNode] = useState<string | null>(null);
-  const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
-  const [loadingQuiz, setLoadingQuiz] = useState(false);
     // Node descriptions and multimedia content state
   const [nodeDescriptions, setNodeDescriptions] = useState<Record<string, string>>({});
   const [nodeMultimedia, setNodeMultimedia] = useState<Record<string, any>>({});
   const [loadingDescription, setLoadingDescription] = useState<string | null>(null);
+  // Cap description-fetch retries per node so a persistent backend failure
+  // can't loop forever re-firing the effect that watches loadingDescription
+  const [descriptionFailCount, setDescriptionFailCount] = useState<Record<string, number>>({});
+  const [descriptionErrors, setDescriptionErrors] = useState<Record<string, string>>({});
+  const MAX_DESCRIPTION_RETRIES = 2;
   
   // React Flow instance ref for controlling view
-  const { getNodes, setCenter, getZoom } = useReactFlow();
+  const { getNodes, fitView } = useReactFlow();
   // State for the actual mind map data (to allow updating read status)
   const [localMindMapData, setLocalMindMapData] = useState<SidebarTopic[]>([]);
     // Update localMindMapData when mindMapData changes
@@ -604,127 +678,6 @@ function MindMapContent() {
     });
       return initialStatus;
   });  // Function to toggle read status of a node
-  const handleToggleReadStatus = useCallback(async (nodeId: string, isRead?: boolean): Promise<void> => {
-    try {
-      const mindMapId = params?.id as string;
-      if (!mindMapId) {
-        console.error('Mind map ID not available');
-        return;
-      }
-
-      // Get current read status - be explicit about it
-      const currentIsRead = topicsReadStatus[nodeId] === true;
-      
-      console.log('=== TOGGLE READ STATUS DEBUG ===');
-      console.log(`Node ID: ${nodeId}`);
-      console.log(`Current isRead from state: ${topicsReadStatus[nodeId]}`);
-      console.log(`Current isRead (boolean): ${currentIsRead}`);
-      console.log(`isRead parameter: ${isRead}`);
-      console.log(`topicsReadStatus:`, topicsReadStatus);
-      
-      // Determine the new read status
-      const newIsRead = isRead !== undefined ? isRead : !currentIsRead;
-      
-      console.log(`New isRead will be: ${newIsRead}`);
-      console.log('================================');
-      
-      // If currently checked and user wants to uncheck, do it directly without quiz
-      if (currentIsRead === true && newIsRead === false) {
-        console.log(`✓ UNCHECKING node ${nodeId} directly (was checked)`);
-        await updateReadStatusDirectly(nodeId, false);
-        return;
-      }
-      
-      // If currently unchecked and user wants to check, show quiz first
-      if (currentIsRead === false && newIsRead === true) {
-        console.log(`✓ SHOWING QUIZ for node ${nodeId} (was unchecked)`);
-        
-        // Show loading state immediately
-        setLoadingQuiz(true);
-        setPendingReadNode(nodeId);
-        
-        // Check if we have a description for this node to generate quiz
-        const nodeDescription = nodeDescriptions[nodeId];
-        if (!nodeDescription) {
-          // If no description available, fetch it first
-          console.log(`No description available for ${nodeId}, fetching...`);
-          try {
-            const nodes = getNodes();
-            const nodeData = nodes.find(node => node.id === nodeId);
-            if (nodeData && nodeData.data && typeof nodeData.data === 'object' && 'label' in nodeData.data) {
-              const nodeLabel = String(nodeData.data.label);
-              const response = await apiService.getMindMapNodeDescription(
-                nodeId,
-                nodeLabel,
-                "",
-                [],
-                []
-              );
-              
-              if (response?.success && response.description) {
-                setNodeDescriptions(prev => ({
-                  ...prev,
-                  [nodeId]: response.description
-                }));
-                // Now proceed with quiz generation using the fetched description
-                await generateAndShowQuiz(nodeId, response.description);
-                return;
-              }
-            }
-          } catch (descError) {
-            console.error('Error fetching node description for quiz:', descError);
-            setLoadingQuiz(false);
-            setPendingReadNode(null);
-          }
-          
-          // If we still don't have description, use a generic one
-          const fallbackDescription = `Educational content about ${nodeId}. This topic contains important concepts that you should understand before marking it as complete.`;
-          await generateAndShowQuiz(nodeId, fallbackDescription);
-        } else {
-          // We have the description, generate quiz
-          await generateAndShowQuiz(nodeId, nodeDescription);
-        }
-        return;
-      }
-      
-      // This shouldn't be reached if we handled uncheck or check cases above
-      console.warn(`⚠️ Reached fallback case for node ${nodeId} - this might indicate a logic error`);
-      console.warn(`Current: ${currentIsRead}, New: ${newIsRead}`);
-      
-    } catch (error) {
-      console.error('Error in handleToggleReadStatus:', error);
-      setLoadingQuiz(false);
-      setPendingReadNode(null);
-    }
-  }, [topicsReadStatus, params?.id, nodeDescriptions, getNodes]);
-
-  // Function to generate and show quiz
-  const generateAndShowQuiz = useCallback(async (nodeId: string, description: string) => {
-    try {
-      // Loading state is already set in handleToggleReadStatus
-      console.log(`Generating quiz for node: ${nodeId}`);
-      const response = await apiService.getMindMapNodeQuiz(nodeId, description);
-      
-      if (response?.success && response.quiz && response.quiz.questions) {
-        setQuizQuestions(response.quiz.questions);
-        setLoadingQuiz(false); // Stop loading before showing modal
-        setShowQuizModal(true); // Show modal immediately after questions are ready
-      } else {
-        console.error('Failed to generate quiz:', response?.error);
-        setLoadingQuiz(false);
-        setPendingReadNode(null);
-        // Fallback: mark as read without quiz
-        await updateReadStatusDirectly(nodeId, true);
-      }
-    } catch (error) {
-      console.error('Error generating quiz:', error);
-      setLoadingQuiz(false);
-      setPendingReadNode(null);
-      // Fallback: mark as read without quiz
-      await updateReadStatusDirectly(nodeId, true);
-    }
-  }, []);
-
   // Function to directly update read status (bypassing quiz)
   const updateReadStatusDirectly = useCallback(async (nodeId: string, newIsRead: boolean) => {
     try {
@@ -912,20 +865,26 @@ function MindMapContent() {
     }
   }, [topicsReadStatus, params?.id, setLocalMindMapData, localMindMapData]);
 
-  // Handle quiz completion
-  const handleQuizSuccess = useCallback(async () => {
-    if (pendingReadNode) {
-      await updateReadStatusDirectly(pendingReadNode, true);
-      setPendingReadNode(null);
-      setQuizQuestions([]);
-      setShowQuizModal(false);
+  // Function to toggle read status of a node
+  const handleToggleReadStatus = useCallback(async (nodeId: string, isRead?: boolean): Promise<void> => {
+    try {
+      const mindMapId = params?.id as string;
+      if (!mindMapId) {
+        console.error('Mind map ID not available');
+        return;
+      }
+
+      // Get current read status - be explicit about it
+      const currentIsRead = topicsReadStatus[nodeId] === true;
+      const newIsRead = isRead !== undefined ? isRead : !currentIsRead;
+      
+      await updateReadStatusDirectly(nodeId, newIsRead);
+    } catch (error) {
+      console.error('Error in handleToggleReadStatus:', error);
     }
-  }, [pendingReadNode, updateReadStatusDirectly]);  // Handle quiz modal close
-  const handleQuizClose = useCallback(() => {
-    setPendingReadNode(null);
-    setQuizQuestions([]);
-    setShowQuizModal(false);
-  }, []);
+  }, [topicsReadStatus, params?.id, updateReadStatusDirectly]);
+
+
 
   // Function to load read status from backend
   const loadReadStatus = useCallback(async () => {
@@ -1005,7 +964,7 @@ function MindMapContent() {
                     ...node,
                     label: node.label,
                     isRoot: isRoot,
-                    expanded: isRoot, // Start with root expanded
+                    expanded: false, // Start fully collapsed — only the root node is visible until expanded
                     hasChildren: hasChildren,
                     canExpand: !isRoot && !hasChildren, // Leaf nodes (not root, no children) can be expanded
                     isRead: false,
@@ -1017,7 +976,7 @@ function MindMapContent() {
                 };
               });
               
-              setNodes(reactFlowNodes);
+              setNodes(layoutNodesHierarchically(reactFlowNodes));
                 // Initialize the edges data for React Flow
               if (parsedData.edges) {
                 const reactFlowEdges = parsedData.edges.map((edge: any) => ({
@@ -1129,6 +1088,17 @@ function MindMapContent() {
 
     loadMindMapData();
   }, [params?.id]);
+
+  // The `fitView` prop on <ReactFlow> only fits once, at mount — before the
+  // async load above has populated real nodes/positions. Re-fit imperatively
+  // once loading finishes and the (now correctly spaced) nodes have rendered.
+  useEffect(() => {
+    if (isLoading) return;
+    const timeoutId = setTimeout(() => {
+      fitView({ padding: 0.2, duration: 400 });
+    }, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isLoading, fitView]);
   // Using type definitions from mind-map-utils.ts  // Using convertBackendDataToSidebarFormat from mind-map-utils.ts  // Using getFallbackData from mind-map-utils.ts
   // Function to initialize React Flow data
   const initializeReactFlowData = (data: any) => {
@@ -1151,7 +1121,7 @@ function MindMapContent() {
             ...node,
             label: node.label,
             isRoot: isRoot,
-            expanded: isRoot, // Start with root expanded
+            expanded: false, // Start fully collapsed — only the root node is visible until expanded
             hasChildren: hasChildren,
             canExpand: !isRoot && !hasChildren, // Leaf nodes (not root, no children) can be expanded
             isRead: false,
@@ -1163,8 +1133,8 @@ function MindMapContent() {
         };
       });
       
-      setNodes(reactFlowNodes);
-      
+      setNodes(layoutNodesHierarchically(reactFlowNodes));
+
       // Initialize the edges data for React Flow
       if (data.edges && Array.isArray(data.edges)) {        const reactFlowEdges = data.edges.map((edge: any) => ({
           id: edge.id || `${edge.source}-${edge.target}`,
@@ -1198,6 +1168,7 @@ function MindMapContent() {
     setIsGeneratingPodcast(false);
     setGeneratedPodcastUrl(null);
     setChatMessages([]); // Reset chat when switching nodes
+    setActiveNodeTab('notes'); // Back to first tab on node switch
   }, [selectedNode]);
 
   // Handle sidebar resizing
@@ -1249,24 +1220,23 @@ function MindMapContent() {
     // Set the selected node
     setSelectedNode(topicId);
     
-    // Find the node in the mind map and center on it
+    // Find the node in the mind map and zoom in to focus on it
     const nodes = getNodes();
     const selectedNodeData = nodes.find(node => node.id === topicId);
     if (selectedNodeData) {
-      // Center the view on the selected node with smooth animation
-      setCenter(selectedNodeData.position.x, selectedNodeData.position.y, { zoom: getZoom(), duration: 800 });
+      fitView({ nodes: [{ id: topicId }], padding: 0.6, maxZoom: 1.5, duration: 800 });
     }
   };
     // Handle subtopic selection from sidebar
   const handleSubtopicSelect = (topicId: string, subtopicId: string) => {
     console.log('Subtopic selected:', topicId, subtopicId);
-    
+
     // Set the selected node
     setSelectedNode(subtopicId);
-    
-    // First ensure parent topic is expanded
+
+    // First ensure parent topic is expanded, repositioning to prevent overlap
     setNodes((nds) => {
-      return nds.map((node) => {
+      const updatedNodes = nds.map((node) => {
         // Expand the parent node
         if (node.id === topicId) {
           return {
@@ -1274,7 +1244,7 @@ function MindMapContent() {
             data: { ...node.data, expanded: true }
           };
         }
-        
+
         // Show this subtopic and other subtopics of the parent
         if (node.data.parentNode === topicId) {
           return {
@@ -1284,19 +1254,22 @@ function MindMapContent() {
         }
         return node;
       });
+
+      return calculateDynamicPositions(updatedNodes, topicId, true);
     });
-    
+
     // Add parent to expanded topics
     if (!expandedTopics.includes(topicId)) {
       setExpandedTopics(prev => [...prev, topicId]);
     }
-    
-    // Focus on the selected subtopic after a short delay to ensure nodes are rendered
+
+    // Zoom in to focus on the selected subtopic (with its parent for context)
+    // after a short delay to ensure nodes are rendered at their new positions
     setTimeout(() => {
       const nodes = getNodes();
       const selectedNodeData = nodes.find(node => node.id === subtopicId);
       if (selectedNodeData && !selectedNodeData.hidden) {
-        setCenter(selectedNodeData.position.x, selectedNodeData.position.y, { zoom: getZoom(), duration: 800 });
+        fitView({ nodes: [{ id: topicId }, { id: subtopicId }], padding: 0.5, maxZoom: 1.5, duration: 800 });
       }
     }, 100);
   };
@@ -1362,14 +1335,13 @@ function MindMapContent() {
     // Set the selected node
     setSelectedNode(nodeId);
     
-    // Find the node in the mind map and center on it
+    // Zoom in to focus tightly on the selected node
     const nodes = getNodes();
     const selectedNodeData = nodes.find(node => node.id === nodeId);
     if (selectedNodeData && !selectedNodeData.hidden) {
-      // Center the view on the selected node with smooth animation
-      setCenter(selectedNodeData.position.x, selectedNodeData.position.y, { zoom: getZoom(), duration: 800 });
+      fitView({ nodes: [{ id: nodeId }], padding: 0.6, maxZoom: 1.5, duration: 800 });
     }
-  }, [getNodes, setCenter, getZoom]);// Function to get content for selected node with AI-generated detailed theory
+  }, [getNodes, fitView]);// Function to get content for selected node with AI-generated detailed theory
   const getSelectedNodeContent = useCallback((nodeId: string | null) => {
     if (!nodeId || !backendData?.nodes) return null;
     
@@ -1726,20 +1698,23 @@ More detailed content will be available soon with comprehensive explanations, eq
   useEffect(() => {
     const fetchNodeDescription = async () => {
       if (!selectedNode || !backendData?.nodes) return;
-      
+
       // Skip if we already have this description
       if (nodeDescriptions[selectedNode]) return;
-      
+
       // Skip if we're already loading this description
       if (loadingDescription === selectedNode) return;
-      
+
+      // Skip if this node has exhausted its retries — surfaced as an error, not a retry loop
+      if ((descriptionFailCount[selectedNode] || 0) >= MAX_DESCRIPTION_RETRIES) return;
+
       // Find the node in backend data
       const nodeData = backendData.nodes.find(n => n.id === selectedNode);
       if (!nodeData) return;
-      
+
       // Set loading state
       setLoadingDescription(selectedNode);
-      
+
       try {        // Find parent and child nodes for context
         const parentNodeId = nodeData.parent || null;
         const parentNode = parentNodeId ? backendData.nodes.find(n => n.id === parentNodeId) : null;
@@ -1762,26 +1737,39 @@ More detailed content will be available soon with comprehensive explanations, eq
         
         if (response && response.success && response.description) {
           console.log('Description received:', response.description.substring(0, 50) + '...');
-          
+
           // Store the description
           setNodeDescriptions(prev => ({
             ...prev,
             [selectedNode]: response.description
           }));
+
+          // Store multimedia so the Videos/Images tabs work without opening Notes first
+          if (response.multimedia) {
+            setNodeMultimedia(prev => ({
+              ...prev,
+              [selectedNode]: response.multimedia
+            }));
+          }
         } else {
-          console.error('Failed to get node description:', response?.error || 'Unknown error');
+          const message = response?.error || 'Unknown error';
+          console.error('Failed to get node description:', message);
+          setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+          setDescriptionErrors(prev => ({ ...prev, [selectedNode]: message }));
         }
       } catch (error) {
         console.error('Error fetching node description:', error);
+        setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+        setDescriptionErrors(prev => ({ ...prev, [selectedNode]: error instanceof Error ? error.message : 'Failed to load description' }));
       } finally {
         setLoadingDescription(null);
       }
     };
-    
+
     if (selectedNode) {
       fetchNodeDescription();
     }
-  }, [selectedNode, backendData, nodeDescriptions, loadingDescription]);
+  }, [selectedNode, backendData, nodeDescriptions, loadingDescription, descriptionFailCount]);
 
   // Function to get related topics for selected node
   const getRelatedTopics = useCallback((nodeId: string | null) => {
@@ -1989,9 +1977,9 @@ More detailed content will be available soon with comprehensive explanations, eq
       id: 'central',
       type: 'customNode',
       position: { x: 300, y: 200 },      
-      data: { 
-        label: mindMapTitle, 
-        expanded: true,
+      data: {
+        label: mindMapTitle,
+        expanded: false,
         hasChildren: mindMapData.length > 0,
         isRoot: true,
         isSelected: selectedNode === 'central',
@@ -2329,12 +2317,11 @@ More detailed content will be available soon with comprehensive explanations, eq
           return addSubtopicsToNode(prevData);
         });
 
-        // Center the view on the newly expanded area
+        // Zoom out just enough to frame the parent + its newly-generated sub-nodes
         setTimeout(() => {
           if (newNodes.length > 0) {
-            const avgX = newNodes.reduce((sum: number, node: any) => sum + node.position.x, 0) / newNodes.length;
-            const avgY = newNodes.reduce((sum: number, node: any) => sum + node.position.y, 0) / newNodes.length;
-            setCenter(avgX, avgY, { zoom: getZoom(), duration: 800 });
+            const fitIds = [nodeId, ...newNodes.map((n: any) => n.id)];
+            fitView({ nodes: fitIds.map(id => ({ id })), padding: 0.3, duration: 600 });
           }
         }, 100);
 
@@ -2363,7 +2350,7 @@ More detailed content will be available soon with comprehensive explanations, eq
         newSet.delete(nodeId);
         return newSet;
       });    }
-  }, [params?.id, expandingNodes, getNodes, nodeDescriptions, handleToggleReadStatus, handleNodeClick, setNodes, setEdges, setCenter, getZoom]);
+  }, [params?.id, expandingNodes, getNodes, nodeDescriptions, handleToggleReadStatus, handleNodeClick, setNodes, setEdges, fitView]);
 
   // Debug drag events
   const dragCounter = useRef(0);
@@ -2460,29 +2447,7 @@ More detailed content will be available soon with comprehensive explanations, eq
     }));
   }, [topicsReadStatus, setNodes]);
   
-  // Sync loading quiz state to nodes
-  useEffect(() => {
-    // Don't update nodes while dragging to prevent position resets
-    if (isDragging.current) return;
-    
-    setNodes(nds => nds.map(node => {
-      const nodeData = node.data as CustomNodeData;
-      const isCurrentlyLoadingQuiz = loadingQuiz && pendingReadNode === node.id;
-      
-      // Only update if loading state actually changed
-      if (isCurrentlyLoadingQuiz !== nodeData.isLoadingQuiz) {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            isLoadingQuiz: isCurrentlyLoadingQuiz
-          }
-        };
-      }
-      
-      return node;
-    }));
-  }, [loadingQuiz, pendingReadNode, setNodes]);
+
   
   // Sync expanded topics state (but don't update all nodes during drag)
   useEffect(() => {
@@ -2538,11 +2503,6 @@ More detailed content will be available soon with comprehensive explanations, eq
       title: "Dashboard",
       icon: <IconBrain className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
       href: "/dashboard",
-    },
-    {
-      title: "Create Room",
-      icon: <IconUsers className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
-      href: "/create-room",
     },
     {
       title: "Mind Map",
@@ -2644,7 +2604,7 @@ More detailed content will be available soon with comprehensive explanations, eq
               elevateNodesOnSelect={false}
             >
               <Controls className="bg-neutral-800 text-white border-neutral-700" />
-              <Background color="#333" gap={16} size={1} />
+              <Background color="#555" gap={16} size={1.5} />
             </ReactFlow>
           </div>
         </div>
@@ -2673,67 +2633,60 @@ More detailed content will be available soon with comprehensive explanations, eq
                   <p className="text-sm text-neutral-400 mt-1">Detailed learning content</p>
                 </div>
                 
-                {/* Compact podcast controls */}
-                <div className="flex items-center gap-2">
-                  {!generatedPodcastUrl ? (
-                    <button
-                      onClick={handleGeneratePodcast}
-                      disabled={isGeneratingPodcast}
-                      className="bg-neutral-700 hover:bg-neutral-600 disabled:bg-neutral-800 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 border border-neutral-600 hover:border-neutral-500 text-sm"
-                      title="Generate Educational Podcast"
-                    >                      {isGeneratingPodcast ? (
-                        <IconLoader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <IconHeadphones className="h-4 w-4" />
-                      )}
-                      {isGeneratingPodcast ? 'Generating...' : 'Podcast'}
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1 text-green-400 text-xs">
-                        <IconHeadphones className="h-3 w-3" />
-                        Ready
-                      </div>
-                      <button
-                        onClick={handleGeneratePodcast}
-                        disabled={isGeneratingPodcast}
-                        className="bg-neutral-600 hover:bg-neutral-700 text-white px-2 py-1 rounded text-xs transition-colors"
-                        title="Regenerate Podcast"
-                      >
-                        ↻
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-                {/* Audio player when ready */}
-              {generatedPodcastUrl && (
-                <div className="mt-4 space-y-2">
-                  <audio
-                    controls
-                    className="w-full h-8"
-                    style={{ filter: 'invert(1) sepia(1) saturate(1) hue-rotate(180deg)' }}
+                {/* Progress toggle (mark read/unread) */}
+                {selectedNode && (
+                  <button
+                    onClick={() => handleToggleReadStatus(selectedNode)}
+                    className={cn(
+                      "w-8 h-8 rounded-full border-2 transition-all duration-200 flex items-center justify-center hover:scale-110 flex-shrink-0",
+                      topicsReadStatus[selectedNode]
+                        ? "bg-green-500 border-green-500"
+                        : "bg-transparent border-neutral-400 hover:border-neutral-300"
+                    )}
+                    title={topicsReadStatus[selectedNode] ? "Mark as unread" : "Mark as read"}
                   >
-                    <source src={generatedPodcastUrl} type="audio/mpeg" />
-                    Your browser does not support the audio element.
-                  </audio>
-                  <div className="flex justify-end">
-                    <a 
-                      href={generatedPodcastUrl} 
-                      download={`podcast-${selectedNode}.mp3`}
-                      className="text-xs flex items-center gap-1 text-blue-400 hover:text-blue-300"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Download Podcast
-                    </a>
-                  </div>
-                </div>
-              )}
-            </div>            {/* Content area - beautifully formatted with KaTeX support */}
-            <div className="flex-1 p-6 overflow-y-auto flex flex-col">
-{/* Topic Content Section */}
+                    {topicsReadStatus[selectedNode] && <IconCheck className="w-4 h-4 text-white" />}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Icon tab bar */}
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-neutral-700 bg-neutral-900 overflow-x-auto flex-shrink-0">
+              {NODE_TABS.map((tab) => {
+                const active = activeNodeTab === tab.key;
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveNodeTab(tab.key)}
+                    title={tab.label}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0",
+                      active
+                        ? "bg-blue-600 text-white"
+                        : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {active && <span className="whitespace-nowrap">{tab.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tab panels */}
+            <div className="flex-1 relative overflow-hidden">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeNodeTab}
+                  initial={{ opacity: 0, x: 8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -8 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute inset-0 p-6 overflow-y-auto flex flex-col"
+                >
+            {activeNodeTab === 'notes' && (
 <div className="text-neutral-300 leading-relaxed space-y-4">
   {(() => {
     // If no node is selected, return loading placeholder
@@ -2763,6 +2716,10 @@ More detailed content will be available soon with comprehensive explanations, eq
     else if (loadingDescription === selectedNode) {
       nodeContent = "# Loading detailed content...\n\nGenerating a comprehensive description of this topic. Please wait a moment.";
     }
+    // Retries exhausted — show the error instead of silently re-fetching forever
+    else if ((descriptionFailCount[selectedNode] || 0) >= MAX_DESCRIPTION_RETRIES) {
+      nodeContent = `# Couldn't load content\n\nWe tried a few times but couldn't generate a description for this topic.\n\n> ${descriptionErrors[selectedNode] || 'Unknown error'}\n\nSelect another node and come back, or try again later.`;
+    }
     // Otherwise use basic content or fetch it
     else {
       // Get the node details
@@ -2773,8 +2730,9 @@ More detailed content will be available soon with comprehensive explanations, eq
         "# Loading content...\n\nContent will appear here shortly."
       );
 
-      // Trigger API call only if we don't have the description and aren't loading
-      if (!nodeDescriptions[selectedNode] && loadingDescription !== selectedNode && nodeData) {
+      // Trigger API call only if we don't have the description, aren't loading, and haven't exhausted retries
+      if (!nodeDescriptions[selectedNode] && loadingDescription !== selectedNode && nodeData
+          && (descriptionFailCount[selectedNode] || 0) < MAX_DESCRIPTION_RETRIES) {
         // Use a dedicated function to handle the API call
         const fetchDescription = async () => {
           try {
@@ -2816,10 +2774,15 @@ More detailed content will be available soon with comprehensive explanations, eq
                 }));
               }
             } else {
-              console.error('Failed to get node description:', response?.error || 'Unknown error');
+              const message = response?.error || 'Unknown error';
+              console.error('Failed to get node description:', message);
+              setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+              setDescriptionErrors(prev => ({ ...prev, [selectedNode]: message }));
             }
           } catch (error) {
             console.error('Error fetching node description:', error);
+            setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+            setDescriptionErrors(prev => ({ ...prev, [selectedNode]: error instanceof Error ? error.message : 'Failed to load description' }));
           } finally {
             setLoadingDescription(null);
           }
@@ -2832,39 +2795,14 @@ More detailed content will be available soon with comprehensive explanations, eq
 
     // Return the content and related topics
     return (
-      <>        {/* Main Content Card with multimedia content */}
-        <MultimediaContentDisplay 
+      <>        {/* Main Content Card + references */}
+        <MultimediaContentDisplay
           content={String(nodeContent)}
           multimedia={nodeMultimedia[selectedNode]}
+          only={['content', 'references']}
           className="w-full"
         />
 
-        {/* Read Status Toggle for Right Sidebar */}
-        <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-lg font-medium text-white mb-1">Progress Status</h4>
-              <p className="text-sm text-neutral-400">
-                {topicsReadStatus[selectedNode] ? 'Completed' : 'Not completed yet'}
-              </p>
-            </div>
-            <button
-              onClick={() => handleToggleReadStatus(selectedNode)}
-              className={cn(
-                "w-8 h-8 rounded-full border-2 transition-all duration-200",
-                "flex items-center justify-center hover:scale-110 ml-4",
-                topicsReadStatus[selectedNode]
-                  ? "bg-green-500 border-green-500"
-                  : "bg-transparent border-neutral-400 hover:border-neutral-300"
-              )}
-              title={topicsReadStatus[selectedNode] ? "Mark as unread" : "Mark as read"}
-            >
-              {topicsReadStatus[selectedNode] && (
-                <IconCheck className="w-4 h-4 text-white" />
-              )}
-            </button>
-          </div>
-        </div>
     {/* Related Topics Card */}
                       {(() => {
                         const relatedTopics = getRelatedTopics(selectedNode);
@@ -2893,49 +2831,153 @@ More detailed content will be available soon with comprehensive explanations, eq
                       })()}
                     </>
                   );
-                })()}{/* AI Responses - shown inline with content */}
-                {chatMessages.map((message) => (
-                  message.type === 'ai' && (
-                    <div key={message.id} className="bg-neutral-800 border border-neutral-600 rounded-lg p-4">
-                      <TextGenerateEffect words={message.content} />
-                      <span className="text-xs text-neutral-400 mt-2 block">
-                        {message.timestamp.toLocaleTimeString()}
-                      </span>
-                    </div>
-                  )
-                ))}
+                })()}
+</div>
+            )}
 
-                {/* AI Typing Indicator */}
-                {isAiTyping && (
-                  <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      </div>
-                      <span className="text-xs text-neutral-400">AI is generating response...</span>
+            {/* Self Notes tab */}
+            {activeNodeTab === 'selfnotes' && (
+              <NodeSelfNotesTab mindMapId={params?.id as string} nodeId={selectedNode} />
+            )}
+
+            {/* AI Chat tab */}
+            {activeNodeTab === 'chat' && (
+              <div className="flex flex-col h-full">
+                <div className="flex-1 space-y-4">
+                  {chatMessages.filter(m => m.type === 'ai').length === 0 && !isAiTyping && (
+                    <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-4 text-neutral-400 text-sm">
+                      Ask a question about this topic below and the AI tutor will answer.
                     </div>
-                  </div>
-                )}
-              </div>              {/* AI Input at bottom */}
-              <div className="mt-6">
-                <PlaceholdersAndVanishInput
-                  placeholders={getTopicPlaceholders(selectedNode)}
-                  onChange={() => {}} // No need to handle onChange for this use case
-                  onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
-                    e.preventDefault();
-                    const form = e.currentTarget;
-                    const input = form.querySelector('input') as HTMLInputElement;
-                    const message = input?.value;
-                    if (message?.trim()) {
-                      console.log("Submitting message:", message); // Debug log
-                      handleChatSubmit(message);
-                      // Don't reset here - the component handles it internally
-                    }
-                  }}
-                />
+                  )}
+                  {chatMessages.map((message) => (
+                    message.type === 'ai' && (
+                      <div key={message.id} className="bg-neutral-800 border border-neutral-600 rounded-lg p-4">
+                        <TextGenerateEffect words={message.content} />
+                        <span className="text-xs text-neutral-400 mt-2 block">
+                          {message.timestamp.toLocaleTimeString()}
+                        </span>
+                      </div>
+                    )
+                  ))}
+                  {isAiTyping && (
+                    <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                        <span className="text-xs text-neutral-400">AI is generating response...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6">
+                  <PlaceholdersAndVanishInput
+                    placeholders={getTopicPlaceholders(selectedNode)}
+                    onChange={() => {}}
+                    onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const input = form.querySelector('input') as HTMLInputElement;
+                      const message = input?.value;
+                      if (message?.trim()) {
+                        handleChatSubmit(message);
+                      }
+                    }}
+                  />
+                </div>
               </div>
+            )}
+
+            {/* Quiz tab */}
+            {activeNodeTab === 'quiz' && (
+              <NodeQuizTab nodeId={selectedNode} nodeDescription={nodeDescriptions[selectedNode]} />
+            )}
+
+            {/* Flashcards tab */}
+            {activeNodeTab === 'flashcards' && (
+              <NodeFlashcardsTab nodeId={selectedNode} nodeDescription={nodeDescriptions[selectedNode]} />
+            )}
+
+            {/* Videos tab */}
+            {activeNodeTab === 'videos' && (
+              nodeMultimedia[selectedNode]?.videos?.length ? (
+                <MultimediaContentDisplay content="" multimedia={nodeMultimedia[selectedNode]} only={['videos']} className="w-full" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-neutral-400 gap-2 text-center px-6">
+                  <IconVideo className="h-10 w-10 text-neutral-600" />
+                  <p className="text-sm">{loadingDescription === selectedNode ? 'Loading related videos…' : 'No related videos for this topic.'}</p>
+                </div>
+              )
+            )}
+
+            {/* Images tab */}
+            {activeNodeTab === 'images' && (
+              nodeMultimedia[selectedNode]?.images?.length ? (
+                <MultimediaContentDisplay content="" multimedia={nodeMultimedia[selectedNode]} only={['images']} className="w-full" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-neutral-400 gap-2 text-center px-6">
+                  <IconPhoto className="h-10 w-10 text-neutral-600" />
+                  <p className="text-sm">{loadingDescription === selectedNode ? 'Loading related images…' : 'No related images for this topic.'}</p>
+                </div>
+              )
+            )}
+
+            {/* Podcast tab */}
+            {activeNodeTab === 'podcast' && (
+              <div className="flex flex-col gap-4">
+                <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-5">
+                  <div className="flex items-center gap-3 mb-2">
+                    <IconHeadphones className="h-6 w-6 text-blue-400" />
+                    <h4 className="text-lg font-medium text-white">Educational Podcast</h4>
+                  </div>
+                  <p className="text-sm text-neutral-400 mb-4">Generate an audio lesson for this topic and listen on the go.</p>
+                  {!generatedPodcastUrl ? (
+                    <button
+                      onClick={handleGeneratePodcast}
+                      disabled={isGeneratingPodcast}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+                    >
+                      {isGeneratingPodcast ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconHeadphones className="h-4 w-4" />}
+                      {isGeneratingPodcast ? 'Generating…' : 'Generate Podcast'}
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <audio
+                        controls
+                        className="w-full h-8"
+                        style={{ filter: 'invert(1) sepia(1) saturate(1) hue-rotate(180deg)' }}
+                      >
+                        <source src={generatedPodcastUrl} type="audio/mpeg" />
+                        Your browser does not support the audio element.
+                      </audio>
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={generatedPodcastUrl}
+                          download={`podcast-${selectedNode}.mp3`}
+                          className="text-xs flex items-center gap-1 text-blue-400 hover:text-blue-300"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download Podcast
+                        </a>
+                        <button
+                          onClick={handleGeneratePodcast}
+                          disabled={isGeneratingPodcast}
+                          className="text-xs text-neutral-400 hover:text-white transition-colors"
+                        >
+                          ↻ Regenerate
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
         </div>
@@ -2946,16 +2988,7 @@ More detailed content will be available soon with comprehensive explanations, eq
           mobileClassName="translate-y-20"
           items={dockLinks}
           activeItem="/mind-map"        />
-      </div>      {/* Quiz Modal */}
-      {showQuizModal && quizQuestions.length > 0 && (
-        <QuizModal
-          isOpen={showQuizModal}
-          onClose={handleQuizClose}
-          questions={quizQuestions}
-          onSuccess={handleQuizSuccess}
-          nodeTitle={pendingReadNode || 'Topic'}
-        />
-      )}
+      </div>
     </div>
   );
 }

@@ -7,6 +7,19 @@ export interface QuizQuestion {
   timeLimit: number;
 }
 
+// Lightweight per-node quiz/flashcard shapes returned by the mind-map node endpoints
+export interface NodeQuizQuestion {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface Flashcard {
+  question: string;
+  answer: string;
+}
+
 export interface Participant {
   userId: string;
   userName: string;
