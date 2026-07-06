@@ -579,6 +579,11 @@ function MindMapContent() {
   const [nodeDescriptions, setNodeDescriptions] = useState<Record<string, string>>({});
   const [nodeMultimedia, setNodeMultimedia] = useState<Record<string, any>>({});
   const [loadingDescription, setLoadingDescription] = useState<string | null>(null);
+  // Cap description-fetch retries per node so a persistent backend failure
+  // can't loop forever re-firing the effect that watches loadingDescription
+  const [descriptionFailCount, setDescriptionFailCount] = useState<Record<string, number>>({});
+  const [descriptionErrors, setDescriptionErrors] = useState<Record<string, string>>({});
+  const MAX_DESCRIPTION_RETRIES = 2;
   
   // React Flow instance ref for controlling view
   const { getNodes, setCenter, getZoom } = useReactFlow();
@@ -1631,20 +1636,23 @@ More detailed content will be available soon with comprehensive explanations, eq
   useEffect(() => {
     const fetchNodeDescription = async () => {
       if (!selectedNode || !backendData?.nodes) return;
-      
+
       // Skip if we already have this description
       if (nodeDescriptions[selectedNode]) return;
-      
+
       // Skip if we're already loading this description
       if (loadingDescription === selectedNode) return;
-      
+
+      // Skip if this node has exhausted its retries — surfaced as an error, not a retry loop
+      if ((descriptionFailCount[selectedNode] || 0) >= MAX_DESCRIPTION_RETRIES) return;
+
       // Find the node in backend data
       const nodeData = backendData.nodes.find(n => n.id === selectedNode);
       if (!nodeData) return;
-      
+
       // Set loading state
       setLoadingDescription(selectedNode);
-      
+
       try {        // Find parent and child nodes for context
         const parentNodeId = nodeData.parent || null;
         const parentNode = parentNodeId ? backendData.nodes.find(n => n.id === parentNodeId) : null;
@@ -1667,7 +1675,7 @@ More detailed content will be available soon with comprehensive explanations, eq
         
         if (response && response.success && response.description) {
           console.log('Description received:', response.description.substring(0, 50) + '...');
-          
+
           // Store the description
           setNodeDescriptions(prev => ({
             ...prev,
@@ -1682,19 +1690,24 @@ More detailed content will be available soon with comprehensive explanations, eq
             }));
           }
         } else {
-          console.error('Failed to get node description:', response?.error || 'Unknown error');
+          const message = response?.error || 'Unknown error';
+          console.error('Failed to get node description:', message);
+          setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+          setDescriptionErrors(prev => ({ ...prev, [selectedNode]: message }));
         }
       } catch (error) {
         console.error('Error fetching node description:', error);
+        setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+        setDescriptionErrors(prev => ({ ...prev, [selectedNode]: error instanceof Error ? error.message : 'Failed to load description' }));
       } finally {
         setLoadingDescription(null);
       }
     };
-    
+
     if (selectedNode) {
       fetchNodeDescription();
     }
-  }, [selectedNode, backendData, nodeDescriptions, loadingDescription]);
+  }, [selectedNode, backendData, nodeDescriptions, loadingDescription, descriptionFailCount]);
 
   // Function to get related topics for selected node
   const getRelatedTopics = useCallback((nodeId: string | null) => {
@@ -2642,6 +2655,10 @@ More detailed content will be available soon with comprehensive explanations, eq
     else if (loadingDescription === selectedNode) {
       nodeContent = "# Loading detailed content...\n\nGenerating a comprehensive description of this topic. Please wait a moment.";
     }
+    // Retries exhausted — show the error instead of silently re-fetching forever
+    else if ((descriptionFailCount[selectedNode] || 0) >= MAX_DESCRIPTION_RETRIES) {
+      nodeContent = `# Couldn't load content\n\nWe tried a few times but couldn't generate a description for this topic.\n\n> ${descriptionErrors[selectedNode] || 'Unknown error'}\n\nSelect another node and come back, or try again later.`;
+    }
     // Otherwise use basic content or fetch it
     else {
       // Get the node details
@@ -2652,8 +2669,9 @@ More detailed content will be available soon with comprehensive explanations, eq
         "# Loading content...\n\nContent will appear here shortly."
       );
 
-      // Trigger API call only if we don't have the description and aren't loading
-      if (!nodeDescriptions[selectedNode] && loadingDescription !== selectedNode && nodeData) {
+      // Trigger API call only if we don't have the description, aren't loading, and haven't exhausted retries
+      if (!nodeDescriptions[selectedNode] && loadingDescription !== selectedNode && nodeData
+          && (descriptionFailCount[selectedNode] || 0) < MAX_DESCRIPTION_RETRIES) {
         // Use a dedicated function to handle the API call
         const fetchDescription = async () => {
           try {
@@ -2695,10 +2713,15 @@ More detailed content will be available soon with comprehensive explanations, eq
                 }));
               }
             } else {
-              console.error('Failed to get node description:', response?.error || 'Unknown error');
+              const message = response?.error || 'Unknown error';
+              console.error('Failed to get node description:', message);
+              setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+              setDescriptionErrors(prev => ({ ...prev, [selectedNode]: message }));
             }
           } catch (error) {
             console.error('Error fetching node description:', error);
+            setDescriptionFailCount(prev => ({ ...prev, [selectedNode]: (prev[selectedNode] || 0) + 1 }));
+            setDescriptionErrors(prev => ({ ...prev, [selectedNode]: error instanceof Error ? error.message : 'Failed to load description' }));
           } finally {
             setLoadingDescription(null);
           }

@@ -87,6 +87,60 @@ const parsingOpenAI = new OpenAI({
   },
 });
 
+// Initialize OpenAI for node expansion with dedicated API key and proper timeouts
+const expandOpenAI = new OpenAI({
+  apiKey: process.env.EXPAND_NODE_API_KEY,
+  maxRetries: 2,
+  httpAgent: {
+    keepAlive: true,
+  },
+});
+
+
+// Fallback provider (Groq) used when the primary OpenAI-tier client fails
+// (rate limit / auth / server error) — Groq's API is OpenAI-compatible, so
+// the same OpenAI SDK works with just a baseURL swap.
+const groqFallback = process.env.GROQ_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1",
+      maxRetries: 1,
+    })
+  : null;
+
+const GROQ_FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || "llama-3.3-70b-versatile";
+
+// Circuit breaker: once a primary client trips a fallback-eligible error
+// (quota exhausted, auth dead, 5xx), stop retrying it for the rest of this
+// process — go straight to Groq. Keyed per client so openai/parsingOpenAI/
+// expandOpenAI each trip independently.
+const disabledPrimaryClients = new WeakSet();
+
+// Wraps chat.completions.create with a fallback to Groq on rate-limit/auth/
+// server errors from the primary client. `model` in params is swapped for
+// the fallback model on retry; everything else is preserved.
+async function createChatCompletion(client, params) {
+  const isFallbackTarget = client === groqFallback;
+
+  if (!isFallbackTarget && groqFallback && disabledPrimaryClients.has(client)) {
+    return groqFallback.chat.completions.create({ ...params, model: GROQ_FALLBACK_MODEL });
+  }
+
+  try {
+    return await client.chat.completions.create(params);
+  } catch (err) {
+    const status = err?.status || err?.response?.status;
+    const isFallbackEligible = status === 429 || status === 401 || (status && status >= 500);
+    if (!groqFallback || isFallbackTarget || !isFallbackEligible) {
+      throw err;
+    }
+    if (!disabledPrimaryClients.has(client)) {
+      disabledPrimaryClients.add(client);
+      console.warn(`Primary OpenAI client failed (status ${status}) — disabling it for the rest of this process, routing to Groq/${GROQ_FALLBACK_MODEL} from now on`);
+    }
+    return groqFallback.chat.completions.create({ ...params, model: GROQ_FALLBACK_MODEL });
+  }
+}
 
 // Initialize ElevenLabs service for podcast generation
 const elevenLabsService = new ElevenLabsService(
@@ -632,7 +686,7 @@ app.post("/api/mindmap/create", verifyToken, checkDbConnection, async (req, res)
     const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
     const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
     
-    const completion = await openai.chat.completions.create({
+    const completion = await createChatCompletion(openai, {
       messages: [
         {
           role: "system",
@@ -992,7 +1046,7 @@ app.post("/api/mindmap/parse-document", verifyToken, upload.single("document"), 
     const programmingKeywords = ['programming', 'coding', 'software', 'computer', 'algorithm', 'data structure', 'web', 'app', 'development', 'javascript', 'python', 'java', 'c++', 'code', 'database', 'api', 'framework', 'backend', 'frontend', 'ml', 'ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural network'];
     const isProgrammingSubject = programmingKeywords.some(keyword => subjectName.toLowerCase().includes(keyword));
 
-    const completion = await parsingOpenAI.chat.completions.create({
+    const completion = await createChatCompletion(parsingOpenAI, {
       messages: [
         {
           role: "system",
@@ -1216,7 +1270,7 @@ app.post("/api/mindmap/generate", verifyToken, checkDbConnection, async (req, re
 
     let parsingCompletion;
     try {
-parsingCompletion = await parsingOpenAI.chat.completions.create({
+parsingCompletion = await createChatCompletion(parsingOpenAI, {
   messages: [
     {
       role: "system",
@@ -1586,7 +1640,7 @@ RESPOND WITH VALID JSON ONLY:`,
     console.log("Generating mind map from parsed structure...");
     let mindMapCompletion;
     try {
-mindMapCompletion = await openai.chat.completions.create({
+mindMapCompletion = await createChatCompletion(openai, {
   messages: [
     {
       role: "system",
@@ -2056,7 +2110,7 @@ app.post("/api/mindmap/node-description", verifyToken, async (req, res) => {
         ).join('\n')}` : '';
 
       // Create the prompt for the AI
-      nodeDescription = await openai.chat.completions.create({
+      nodeDescription = await createChatCompletion(openai, {
         messages: [
           {
             role: "system",
@@ -2341,7 +2395,7 @@ app.post("/api/mindmap/node-questions", verifyToken, async (req, res) => {
     console.log(`Generating contextual questions for node: ${nodeId}`);
 
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await createChatCompletion(openai, {
         messages: [
           {
             role: "system",
@@ -2461,7 +2515,7 @@ app.post("/api/mindmap/chat-response", verifyToken, async (req, res) => {
     console.log(`Generating chat response for node ${nodeId} and message: ${userMessage.substring(0, 50)}...`);
 
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await createChatCompletion(openai, {
         messages: [
           {
             role: "system",
@@ -2537,7 +2591,7 @@ app.post("/api/mindmap/node-quiz", verifyToken, async (req, res) => {
 
     console.log(`Generating quiz for node: ${nodeId}`);
 
-    const completion = await openai.chat.completions.create({
+    const completion = await createChatCompletion(openai, {
       messages: [
         {
           role: "system",
@@ -2616,7 +2670,7 @@ app.post("/api/mindmap/node-flashcards", verifyToken, async (req, res) => {
 
     console.log(`Generating flashcards for node: ${nodeId}`);
 
-    const completion = await openai.chat.completions.create({
+    const completion = await createChatCompletion(openai, {
       messages: [
         {
           role: "system",
@@ -2887,21 +2941,14 @@ app.post("/api/mindmap/expand-node", verifyToken, async (req, res) => {
       parentSubject = `Academic Subject (infer from "${nodeTitle}")`;
       console.log(`No DB: Will let OpenAI intelligently determine domain from node title: "${nodeTitle}"`);
     }try {
-      // Use OpenAI with dedicated API key for node expansion
-      const expandOpenAI = new OpenAI({
-        apiKey: process.env.EXPAND_NODE_API_KEY,
-        maxRetries: 2,
-        httpAgent: {
-          keepAlive: true,
-        },
-      });      // Log the final context being sent to AI for domain validation
+      // Log the final context being sent to AI for domain validation
       console.log(`🎯 CONTEXT SUMMARY FOR AI:
         - Node Title: "${nodeTitle}"
         - Subject Context: "${subjectContext}"
         - Mind Map ID: ${mindMapId}
         - AI Task: Intelligently determine domain from node title and generate appropriate sub-topics`);
 
-      const completion = await expandOpenAI.chat.completions.create({
+      const completion = await createChatCompletion(expandOpenAI, {
         messages: [
           {            role: "system",
             content: `You are an exceptionally advanced educational AI specialized in creating deep, hierarchically structured learning pathways. You possess the knowledge architecture of the world's best textbook authors, curriculum designers, and educational specialists. Your mission is to expand educational topics by creating TRUE NESTED HIERARCHIES of knowledge that represent how topics are ACTUALLY taught and learned in depth.
