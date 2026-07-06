@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -57,6 +57,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${outfitFont.variable} antialiased bg-neutral-950 text-white`}
+        suppressHydrationWarning
       >
         <Providers>
           <RoomManagerProvider>

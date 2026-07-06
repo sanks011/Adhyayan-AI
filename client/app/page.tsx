@@ -8,15 +8,15 @@ import { useState, useEffect } from 'react';
 // Lenis will be dynamically imported on the client to enable smooth scrolling
 
 export default function Home() {
-  const [showIntro, setShowIntro] = useState(true);
-  const [hasVisited, setHasVisited] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   // Check if user has already visited (using localStorage)
   useEffect(() => {
+    setIsMounted(true);
     const visited = localStorage.getItem('adhyayan-visited');
-    if (visited === 'true') {
-      setShowIntro(false);
-      setHasVisited(true);
+    if (visited !== 'true') {
+      setShowIntro(true);
     }
   }, []);
 
@@ -24,11 +24,15 @@ export default function Home() {
     // Mark as visited in localStorage
     localStorage.setItem('adhyayan-visited', 'true');
     setShowIntro(false);
-    setHasVisited(true);
   };
 
+  // Render a black screen matching client-side/server-side layout before mount
+  if (!isMounted) {
+    return <div className="fixed inset-0 bg-neutral-950" />;
+  }
+
   // Show spiral intro on first visit
-  if (showIntro && !hasVisited) {
+  if (showIntro) {
     return <SpiralIntro onEnter={handleEnter} />;
   }
 
