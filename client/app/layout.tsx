@@ -23,19 +23,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              // Force dark mode and prevent any theme changes
+              // Force dark mode and prevent any theme changes, plus strip extension-injected attributes
               (function() {
                 document.documentElement.classList.add('dark');
                 document.documentElement.classList.remove('light');
                 localStorage.setItem('theme', 'dark');
                 
                 // Watch for class changes and enforce dark mode
-                const observer = new MutationObserver(function(mutations) {
+                const classObserver = new MutationObserver(function(mutations) {
                   mutations.forEach(function(mutation) {
                     if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                       if (!document.documentElement.classList.contains('dark')) {
@@ -46,10 +46,56 @@ export default function RootLayout({
                   });
                 });
                 
-                observer.observe(document.documentElement, {
+                classObserver.observe(document.documentElement, {
                   attributes: true,
                   attributeFilter: ['class']
                 });
+
+                // Clean up browser extension attributes (e.g., Buster CAPTCHA solver) to prevent hydration mismatches
+                const cleanExtensions = function() {
+                  document.querySelectorAll('[bis_skin_checked]').forEach(function(el) {
+                    el.removeAttribute('bis_skin_checked');
+                  });
+                  if (document.body) {
+                    document.body.removeAttribute('bis_register');
+                    // Remove any processed or bis-injected attributes on body
+                    const attrs = Array.from(document.body.attributes);
+                    attrs.forEach(function(attr) {
+                      if (attr && (attr.name.startsWith('__processed_') || attr.name.startsWith('bis_'))) {
+                        document.body.removeAttribute(attr.name);
+                      }
+                    });
+                  }
+                };
+
+                const extObserver = new MutationObserver(function(mutations) {
+                  let needsClean = false;
+                  for (let i = 0; i < mutations.length; i++) {
+                    const mutation = mutations[i];
+                    if (mutation.type === 'attributes') {
+                      const name = mutation.attributeName;
+                      if (name === 'bis_skin_checked' || name === 'bis_register' || (name && (name.startsWith('__processed_') || name.startsWith('bis_')))) {
+                        needsClean = true;
+                        break;
+                      }
+                    } else if (mutation.type === 'childList') {
+                      needsClean = true;
+                    }
+                  }
+                  if (needsClean) {
+                    cleanExtensions();
+                  }
+                });
+
+                extObserver.observe(document.documentElement, {
+                  attributes: true,
+                  childList: true,
+                  subtree: true
+                });
+
+                // Run clean on load events
+                window.addEventListener('DOMContentLoaded', cleanExtensions);
+                window.addEventListener('load', cleanExtensions);
               })();
             `,
           }}
@@ -57,6 +103,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${outfitFont.variable} antialiased bg-neutral-950 text-white`}
+        suppressHydrationWarning
       >
         <Providers>
           <RoomManagerProvider>

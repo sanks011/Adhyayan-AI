@@ -56,7 +56,7 @@ const ImageCarousel = () => {
     }, [images.length]);
 
     return (
-        <div className="relative aspect-15/8 rounded-2xl overflow-hidden">
+        <div className="relative aspect-[3/2] rounded-2xl overflow-hidden">
             {images.map((image, index) => (
                 <div
                     key={index}
@@ -65,11 +65,11 @@ const ImageCarousel = () => {
                     }`}
                 >
                     <Image
-                        className="bg-background aspect-15/8 w-full h-full object-cover rounded-2xl"
+                        className="bg-background aspect-[3/2] w-full h-full object-cover rounded-2xl"
                         src={image.src}
                         alt={image.alt}
-                        width={2700}
-                        height={1440}
+                        width={1500}
+                        height={1000}
                         priority={index === 0}
                     />
                 </div>
