@@ -83,8 +83,8 @@ const FloatingDockMobile = ({
                 >
                   <div className={cn(
                     "h-4 w-4",
-                    activeItem === item.href 
-                      ? "text-white" 
+                    activeItem === item.href
+                      ? "text-white"
                       : "text-neutral-500 dark:text-neutral-300"
                   )}>
                     {item.icon}
@@ -125,10 +125,10 @@ const FloatingDockDesktop = ({
       )}
     >
       {items.map((item) => (
-        <IconContainer 
-          mouseX={mouseX} 
-          key={item.title} 
-          {...item} 
+        <IconContainer
+          mouseX={mouseX}
+          key={item.title}
+          {...item}
           isActive={activeItem === item.href}
         />
       ))}
@@ -209,8 +209,8 @@ function IconContainer({
         onMouseLeave={() => setHovered(false)}
         className={cn(
           "relative flex aspect-square items-center justify-center rounded-full",
-          isActive 
-            ? "bg-gradient-to-r from-orange-500 to-red-600 shadow-lg shadow-orange-500/25" 
+          isActive
+            ? "bg-gradient-to-r from-orange-500 to-red-600 shadow-lg shadow-orange-500/25"
             : "bg-gray-200 dark:bg-neutral-800"
         )}
       >

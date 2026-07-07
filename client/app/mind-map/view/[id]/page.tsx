@@ -83,7 +83,7 @@ type CustomNodeData = {
   isExpanding?: boolean;
   isLoadingQuiz?: boolean; // Loading state for quiz generation
   canExpand?: boolean; // For leaf nodes that can be expanded with AI
-  onToggleReadStatus?: (nodeId: string) => void;
+  onToggleReadStatus?: (nodeId: string, isRead?: boolean) => void;
   onNodeClick?: (nodeId: string) => void;
   onExpandNode?: (nodeId: string) => void;
 }
@@ -384,10 +384,16 @@ const CustomNode = memo(({ data, id }: NodeProps): React.ReactElement => {
   // Function to toggle read status
   const toggleReadStatus = useCallback(() => {
     if (nodeData.isRoot) return; // Don't toggle for root node
-    
-    // Call the onToggleReadStatus function from data
+
+    // Pass the target state explicitly, computed from this node's own
+    // (always-fresh) isRead prop. node.data.onToggleReadStatus is only
+    // refreshed for the currently-selected node (see the "Attach handlers"
+    // effect), so relying on the callback to re-derive "current -> toggled"
+    // itself would read a stale topicsReadStatus snapshot on every node
+    // except the last-selected one, permanently resolving to the same
+    // direction (mark-as-read) no matter how many times you click.
     if (nodeData.onToggleReadStatus) {
-      nodeData.onToggleReadStatus(id);
+      nodeData.onToggleReadStatus(id, !nodeData.isRead);
     }
   }, [nodeData, id]);
 
@@ -678,7 +684,12 @@ function MindMapContent() {
     });
       return initialStatus;
   });  // Function to toggle read status of a node
-  // Function to directly update read status (bypassing quiz)
+  // Function to directly update read status (bypassing quiz), cascading
+  // symmetrically in both directions at arbitrary tree depth:
+  //  - marking a node read also marks all its descendants read
+  //  - unmarking a node also unmarks all its descendants
+  //  - after either, every ancestor is recomputed: read only if ALL of its
+  //    direct children are read, walking all the way up to the root
   const updateReadStatusDirectly = useCallback(async (nodeId: string, newIsRead: boolean) => {
     try {
       const mindMapId = params?.id as string;
@@ -686,150 +697,88 @@ function MindMapContent() {
         console.error('Mind map ID not available');
         return;
       }
-      
+
       console.log(`Updating read status for ${nodeId}: ${newIsRead}`);
-      
-      // If unchecking a parent, collect all children to uncheck
-      const nodesToUpdate: Array<{id: string, isRead: boolean}> = [{ id: nodeId, isRead: newIsRead }];
-      
-      // If unchecking, find all children and uncheck them too
-      if (!newIsRead) {
-        const findAllChildren = (parentId: string): string[] => {
-          const children: string[] = [];
-          localMindMapData.forEach(topic => {
-            if (topic.id === parentId) {
-              // Add direct subtopics
-              topic.subtopics.forEach(sub => {
-                children.push(sub.id);
-                // Recursively find nested children if they have subtopics
-                if (sub.subtopics && sub.subtopics.length > 0) {
-                  children.push(...findAllChildren(sub.id));
-                }
-              });
-            } else {
-              // Check in subtopics
-              topic.subtopics.forEach(sub => {
-                if (sub.id === parentId && sub.subtopics) {
-                  sub.subtopics.forEach(nestedSub => {
-                    children.push(nestedSub.id);
-                    if (nestedSub.subtopics && nestedSub.subtopics.length > 0) {
-                      children.push(...findAllChildren(nestedSub.id));
-                    }
-                  });
-                }
-              });
-            }
-          });
-          return children;
-        };
-        
-        const childrenIds = findAllChildren(nodeId);
-        childrenIds.forEach(childId => {
-          nodesToUpdate.push({ id: childId, isRead: false });
-        });
-        
-        if (childrenIds.length > 0) {
-          console.log(`Unchecking ${childrenIds.length} children of ${nodeId}:`, childrenIds);
+
+      // Locate the node and collect every descendant id, however deep
+      const findNode = (topics: any[], id: string): any | null => {
+        for (const topic of topics) {
+          if (topic.id === id) return topic;
+          if (topic.subtopics?.length) {
+            const found = findNode(topic.subtopics, id);
+            if (found) return found;
+          }
         }
-      }
-      
-      // Update local state immediately for better UX
-      const updatedStatus = {
-        ...topicsReadStatus
+        return null;
       };
-      
-      nodesToUpdate.forEach(node => {
-        updatedStatus[node.id] = node.isRead;
-      });
-      
-      setTopicsReadStatus(updatedStatus);
-        // Update local mind map data and check for auto-parent marking
-      setLocalMindMapData(prev => {
-        const updatedData = prev.map(topic => {
-          // Helper to update node read status recursively
-          const updateNodeStatus = (node: any): any => {
-            const shouldUpdate = nodesToUpdate.find(n => n.id === node.id);
-            if (shouldUpdate) {
-              return {
-                ...node,
-                isRead: shouldUpdate.isRead,
-                subtopics: node.subtopics ? node.subtopics.map(updateNodeStatus) : []
-              };
-            }
-            return {
-              ...node,
-              subtopics: node.subtopics ? node.subtopics.map(updateNodeStatus) : []
-            };
-          };
-          
-          if (topic.id === nodeId) {
-            // Direct topic toggle - also update all children if unchecking
-            return updateNodeStatus(topic);
-          }
-          
-          // Check if this is a subtopic being toggled
-          const updatedTopic = updateNodeStatus(topic);
-          
-          // Handle parent topic auto-marking based on subtopic status
-          if (topic.subtopics.some(sub => sub.id === nodeId)) {
-            if (newIsRead) {
-              // Auto-mark parent as read if all subtopics are read
-              const allSubtopicsRead = updatedTopic.subtopics.every((sub: any) => 
-                sub.id === nodeId ? newIsRead : updatedStatus[sub.id]
-              );
-              
-              if (allSubtopicsRead && topic.subtopics.length > 0) {
-                console.log(`Auto-marking parent topic ${topic.id} as read - all subtopics completed`);
-                updatedStatus[topic.id] = true;
-                setTopicsReadStatus(updatedStatus);
-                
-                // Also update in backend
-                setTimeout(() => {
-                  apiService.updateNodeReadStatus(mindMapId, topic.id, true)
-                    .catch((error: any) => console.error('Error auto-updating parent read status:', error));
-                }, 100);
-                
-                return {
-                  ...updatedTopic,
-                  isRead: true
-                };
-              }
-            } else {
-              // Auto-unmark parent if any subtopic is unchecked
-              if (topic.isRead) {
-                console.log(`Auto-unmarking parent topic ${topic.id} - subtopic ${nodeId} unchecked`);
-                updatedStatus[topic.id] = false;
-                setTopicsReadStatus(updatedStatus);
-                
-                // Also update in backend
-                setTimeout(() => {
-                  apiService.updateNodeReadStatus(mindMapId, topic.id, false)
-                    .catch((error: any) => console.error('Error auto-updating parent read status:', error));
-                }, 100);
-                
-                return {
-                  ...updatedTopic,
-                  isRead: false
-                };
-              }
-            }
-          }
-          
-          return updatedTopic;
+
+      const collectDescendantIds = (node: any): string[] => {
+        const ids: string[] = [];
+        (node.subtopics || []).forEach((child: any) => {
+          ids.push(child.id);
+          ids.push(...collectDescendantIds(child));
         });
-        
-        return updatedData;
+        return ids;
+      };
+
+      // Chain of ancestors from root down to (but not including) the target node
+      const findAncestorChain = (topics: any[], id: string, chain: any[] = []): any[] | null => {
+        for (const topic of topics) {
+          if (topic.id === id) return chain;
+          if (topic.subtopics?.length) {
+            const found = findAncestorChain(topic.subtopics, id, [...chain, topic]);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const targetNode = findNode(localMindMapData, nodeId);
+      const descendantIds = targetNode ? collectDescendantIds(targetNode) : [];
+      const ancestorChain = findAncestorChain(localMindMapData, nodeId) || [];
+
+      // Self + all descendants take the new status
+      const updatedStatus: Record<string, boolean> = { ...topicsReadStatus };
+      updatedStatus[nodeId] = newIsRead;
+      descendantIds.forEach(id => { updatedStatus[id] = newIsRead; });
+
+      // Walk ancestors bottom-up: each is read only if ALL its direct
+      // children now are. Using the live tree's subtopics (not just the
+      // toggled branch) so unrelated siblings' existing status still counts.
+      for (let i = ancestorChain.length - 1; i >= 0; i--) {
+        const ancestor = ancestorChain[i];
+        const children = ancestor.subtopics || [];
+        const allChildrenRead = children.length > 0 && children.every((child: any) =>
+          updatedStatus[child.id] !== undefined ? updatedStatus[child.id] : child.isRead
+        );
+        updatedStatus[ancestor.id] = allChildrenRead;
+      }
+
+      // Every id whose status actually changed needs a state update + backend persist
+      const nodesToUpdate: Array<{ id: string; isRead: boolean }> = Object.keys(updatedStatus)
+        .filter(id => updatedStatus[id] !== topicsReadStatus[id])
+        .map(id => ({ id, isRead: updatedStatus[id] }));
+
+      setTopicsReadStatus(updatedStatus);
+
+      // Rebuild the local tree in one pass, applying the new status to every affected node
+      setLocalMindMapData(prev => {
+        const applyStatus = (node: any): any => ({
+          ...node,
+          isRead: updatedStatus[node.id] !== undefined ? updatedStatus[node.id] : node.isRead,
+          subtopics: node.subtopics ? node.subtopics.map(applyStatus) : []
+        });
+        return prev.map(applyStatus);
       });
 
       // Persist to backend - update all affected nodes
       try {
-        // Update all nodes in parallel
-        const updatePromises = nodesToUpdate.map(node => 
+        const updatePromises = nodesToUpdate.map(node =>
           apiService.updateNodeReadStatus(mindMapId, node.id, node.isRead)
             .then(() => console.log(`Successfully updated read status for ${node.id} to ${node.isRead}`))
             .catch((error: any) => console.error(`Error updating read status for ${node.id}:`, error))
         );
-        
+
         await Promise.all(updatePromises);
         console.log(`Successfully updated read status for ${nodesToUpdate.length} node(s)`);
       } catch (error) {
@@ -838,27 +787,18 @@ function MindMapContent() {
         setTopicsReadStatus(prev => {
           const reverted = { ...prev };
           nodesToUpdate.forEach(node => {
-            reverted[node.id] = !node.isRead;
+            reverted[node.id] = topicsReadStatus[node.id];
           });
           return reverted;
         });
-        setLocalMindMapData(prev => prev.map(topic => {
-          if (topic.id === nodeId) {
-            return {
-              ...topic,
-              isRead: !newIsRead
-            };
-          }
-          return {
-            ...topic,
-            subtopics: topic.subtopics.map(subtopic => 
-              subtopic.id === nodeId ? {
-                ...subtopic,
-                isRead: !newIsRead
-              } : subtopic
-            )
-          };
-        }));
+        setLocalMindMapData(prev => {
+          const revertStatus = (node: any): any => ({
+            ...node,
+            isRead: nodesToUpdate.some(n => n.id === node.id) ? topicsReadStatus[node.id] : node.isRead,
+            subtopics: node.subtopics ? node.subtopics.map(revertStatus) : []
+          });
+          return prev.map(revertStatus);
+        });
       }
     } catch (error) {
       console.error('Error in updateReadStatusDirectly:', error);
@@ -1063,24 +1003,13 @@ function MindMapContent() {
           if (errorMessage.includes('not found') || errorMessage.includes('Local mind map not found')) {
             console.warn('Mind map not found in localStorage or server. It may need to be created first.');
             setError('Mind map not found. Please create a new mind map or select an existing one from the history.');
+          } else {
+            setError(`Failed to load mind map from server: ${errorMessage}`);
           }
-          
-          // Use fallback dummy data for demo purposes
-          console.log('Loading fallback demo data...');
-          const fallbackData = generateFallbackMindMapData();
-          setBackendData(fallbackData);
-          setMindMapData(getFallbackData());
-          setMindMapTitle('Photosynthesis (Demo)');
-          initializeReactFlowData(fallbackData);
         }
-          } catch (error) {
+      } catch (error) {
         console.error('Error loading mind map:', error);
         setError(error instanceof Error ? error.message : 'Failed to load mind map');
-        // Use fallback dummy data
-        const fallbackData = generateFallbackMindMapData();
-        setBackendData(fallbackData);
-        setMindMapData(getFallbackData());
-        setMindMapTitle('Photosynthesis (Demo)');
       } finally {
         setIsLoading(false);
       }

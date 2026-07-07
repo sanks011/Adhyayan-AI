@@ -140,6 +140,16 @@ export default function MindMap() {
     if (file) {
       setUploadedFile(file);
       
+      // Auto-populate subject name from filename if it's empty
+      if (!subjectName.trim()) {
+        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        // Clean up common delimiters like dashes/underscores and capitalize
+        const cleanedName = nameWithoutExt
+          .replace(/[-_]/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+        setSubjectName(cleanedName);
+      }
+      
       try {
         // Use the backend API to process the file
         const result = await apiService.uploadSyllabusFile(file);        if (result.success && result.extractedText) {
@@ -263,15 +273,18 @@ export default function MindMap() {
         console.log('Mind map generated successfully:', response.mindMap);
         
         // Store in localStorage for immediate access with better structure
-        const mindMapId = response.mindMap.id || `mindmap_${Date.now()}`;
+        const mindMapId = response.mindMapId || response.mindMap.id || `mindmap_${Date.now()}`;
         const mindMapData = {
           ...response.mindMap,
+          id: mindMapId,
           // Ensure required fields are present
           title: response.mindMap.title || subjectName,
           subject: response.mindMap.subject || subjectName,
           nodes: response.mindMap.nodes || [],
           edges: response.mindMap.edges || []
-        };        localStorage.setItem(`mindmap_${mindMapId}`, JSON.stringify(mindMapData));
+        };
+        const storageKey = mindMapId.startsWith('mindmap_') ? mindMapId : `mindmap_${mindMapId}`;
+        localStorage.setItem(storageKey, JSON.stringify(mindMapData));
         console.log('Saved mind map to localStorage with ID:', mindMapId);
         
         // Refresh user points after successful generation
@@ -338,8 +351,9 @@ export default function MindMap() {
       // Only create fallback data for non-payment related errors
       console.log('Falling back to dummy data generation');
       const mindMapId = `mindmap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const dummyMindMapData = generateDummyMindMap(subjectName, syllabus);
-      localStorage.setItem(`mindmap_${mindMapId}`, JSON.stringify(dummyMindMapData));
+      const dummyMindMapData = generateDummyMindMap(subjectName, syllabus, mindMapId);
+      const storageKey = mindMapId.startsWith('mindmap_') ? mindMapId : `mindmap_${mindMapId}`;
+      localStorage.setItem(storageKey, JSON.stringify(dummyMindMapData));
       
       // Reset form
       setSubjectName("");
@@ -352,7 +366,7 @@ export default function MindMap() {
   };
 
   // Generate dummy mind map data for UI/UX design purposes
-  const generateDummyMindMap = (subject: string, content: string) => {
+  const generateDummyMindMap = (subject: string, content: string, id?: string) => {
     const topics = content ? content.split('\n').filter(line => line.trim()) : [
       'Introduction to ' + subject,
       'Fundamentals',
@@ -439,7 +453,7 @@ Use the quiz feature to test your understanding and the AI chat to ask specific 
         });
       }
     });    return {
-      id: `mindmap_${Date.now()}`,
+      id: id || `mindmap_${Date.now()}`,
       title: subject,
       subject: subject,
       content: content,
