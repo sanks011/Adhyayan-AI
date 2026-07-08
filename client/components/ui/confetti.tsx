@@ -44,24 +44,7 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>((props, ref) => {
     ...rest
   } = props
   const instanceRef = useRef<ConfettiInstance | null>(null)
-
-  const canvasRef = useCallback(
-    (node: HTMLCanvasElement) => {
-      if (node !== null) {
-        if (instanceRef.current) return
-        instanceRef.current = confetti.create(node, {
-          ...globalOptions,
-          resize: true,
-        })
-      } else {
-        if (instanceRef.current) {
-          instanceRef.current.reset()
-          instanceRef.current = null
-        }
-      }
-    },
-    [globalOptions]
-  )
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const fire = useCallback(
     async (opts = {}) => {
@@ -82,6 +65,46 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>((props, ref) => {
   )
 
   useImperativeHandle(ref, () => api, [api])
+
+  useEffect(() => {
+    const node = canvasRef.current
+    if (!node) return
+
+    if (instanceRef.current) return
+
+    // Ensure we don't use workers to avoid transferControlToOffscreen errors when manually resizing
+    const actualGlobalOptions = {
+      ...globalOptions,
+      useWorker: false,
+      resize: false, // We resize via ResizeObserver
+    }
+
+    instanceRef.current = confetti.create(node, actualGlobalOptions)
+
+    // Set initial size
+    node.width = node.clientWidth || window.innerWidth
+    node.height = node.clientHeight || window.innerHeight
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0) {
+          node.width = width
+          node.height = height
+        }
+      }
+    })
+
+    resizeObserver.observe(node)
+
+    return () => {
+      resizeObserver.disconnect()
+      if (instanceRef.current) {
+        instanceRef.current.reset()
+        instanceRef.current = null
+      }
+    }
+  }, [globalOptions])
 
   useEffect(() => {
     if (!manualstart) {

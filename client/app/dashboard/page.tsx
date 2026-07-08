@@ -4,10 +4,10 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { apiService } from '@/lib/api';
 import { FloatingDock } from "@/components/ui/floating-dock";
-import { WavyBackground } from "@/components/ui/wavy-background";
+import DarkVeil from "@/components/DarkVeil";
 import BlackHoleLoader from "@/components/ui/black-hole-loader";
 import { GyanPointsDisplay } from "@/components/custom/GyanPointsDisplay";
-import { Confetti, type ConfettiRef } from "@/components/ui/confetti";
+import confetti from "canvas-confetti";
 import { Card, CardBody, Button, Input, Skeleton } from "@heroui/react";
 import toast from 'react-hot-toast';
 import {
@@ -45,44 +45,37 @@ export default function Dashboard() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const confettiRef = useRef<ConfettiRef>(null);
 
   // Trigger confetti on first dashboard load after sign-in
   useEffect(() => {
-    if (isAuthenticated && user && !loading && confettiRef.current) {
+    let timer: NodeJS.Timeout;
+
+    if (isAuthenticated && user && !loading) {
       // Check if this is a new session (just signed in)
       const confettiShown = sessionStorage.getItem('adhyayan-confetti-shown');
       
       if (!confettiShown) {
-        console.log('Triggering confetti!');
-        
-        // Mark as shown immediately to prevent multiple triggers
-        sessionStorage.setItem('adhyayan-confetti-shown', 'true');
+        console.log('Scheduling confetti!');
         
         // Small delay to ensure page is loaded
-        const timer = setTimeout(() => {
+        timer = setTimeout(() => {
+          // Mark as shown only when actually fired to handle React StrictMode double-mounts
+          sessionStorage.setItem('adhyayan-confetti-shown', 'true');
+          
           // Fire a big burst from the center
-          confettiRef.current?.fire({
+          confetti({
             particleCount: 100,
             spread: 70,
             origin: { x: 0.5, y: 0.5 },
             colors: ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'],
           });
-
-          // Second burst slightly delayed for a fuller effect
-          setTimeout(() => {
-            confettiRef.current?.fire({
-              particleCount: 50,
-              spread: 100,
-              origin: { x: 0.5, y: 0.5 },
-              colors: ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'],
-            });
-          }, 250);
         }, 500);
-
-        return () => clearTimeout(timer);
       }
     }
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, [isAuthenticated, user, loading]);
 
   // Update display name when user changes or when profile is updated
@@ -208,15 +201,19 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen relative">
-      {/* Confetti Canvas */}
-      <Confetti
-        ref={confettiRef}
-        className="fixed inset-0 z-[9999] pointer-events-none"
-        manualstart
-      />
-      
-      <WavyBackground className="min-h-screen flex flex-col items-center justify-center p-8 relative">
+    <div className="min-h-screen relative flex flex-col items-center justify-center p-8 overflow-hidden bg-black">
+      {/* Background Container */}
+      <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <DarkVeil
+          hueShift={0}
+          noiseIntensity={0}
+          scanlineIntensity={0}
+          speed={0.5}
+          scanlineFrequency={0}
+          warpAmount={0}
+          resolutionScale={1}
+        />
+      </div>
           {/* Gyan Points Display - Top Right Corner */}
         <div className="fixed top-4 right-4 z-50 md:top-6 md:right-8 lg:right-12">
           <GyanPointsDisplay />
@@ -254,8 +251,29 @@ export default function Dashboard() {
               )}
             </div>
             <div className="flex flex-col items-start">
-              <h1 className="text-4xl font-bold text-white mb-2">
-                Welcome back, {displayName?.split(' ')[0] || user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}! 👋
+              <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-2">
+                Welcome back, {displayName?.split(' ')[0] || user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}!
+                <img 
+                  src="/waving-hand.png" 
+                  alt="Waving Hand" 
+                  className="w-10 h-10 object-contain animate-wave-hand"
+                  style={{ transformOrigin: '70% 70%' }}
+                />
+                <style dangerouslySetInnerHTML={{__html: `
+                  @keyframes wave-hand {
+                    0% { transform: rotate( 0.0deg) }
+                    10% { transform: rotate(14.0deg) }
+                    20% { transform: rotate(-8.0deg) }
+                    30% { transform: rotate(14.0deg) }
+                    40% { transform: rotate(-4.0deg) }
+                    50% { transform: rotate(10.0deg) }
+                    60% { transform: rotate( 0.0deg) }
+                    100% { transform: rotate( 0.0deg) }
+                  }
+                  .animate-wave-hand {
+                    animation: wave-hand 2.5s infinite;
+                  }
+                `}} />
               </h1>
               <p className="text-neutral-200 text-lg">
                 Ready to explore the future of AI-powered learning?
@@ -270,7 +288,6 @@ export default function Dashboard() {
             activeItem="/dashboard"
           />
         </div>
-      </WavyBackground>
     </div>
   );
 }

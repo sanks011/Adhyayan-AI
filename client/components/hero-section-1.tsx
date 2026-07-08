@@ -5,6 +5,13 @@ import { ArrowRight, ChevronRight, Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button1'
 import { AnimatedGroup } from '@/components/ui/animated-group'
 import { cn } from '@/lib/utils'
+import {
+  Matrix,
+  loader,
+  wave,
+  snake,
+  pulse,
+} from "@/components/unlumen-ui/matrix"
 
 const transitionVariants: any = {
     item: {
@@ -26,69 +33,175 @@ const transitionVariants: any = {
     },
 }
 
-// Image Carousel Component
-const ImageCarousel = () => {
-    const [currentImageIndex, setCurrentImageIndex] = useState(0);
-      // Array of image URLs - using direct paths
-    const images = [
+// Interactive Matrix Showcase Component
+const MatrixShowcase = () => {
+    const [activeModeIndex, setActiveModeIndex] = useState(0);
+    const [vuLevels, setVuLevels] = useState([0.2, 0.4, 0.6, 0.8, 0.6, 0.4, 0.2, 0.1]);
+
+    const modes = [
         {
-            src: "/p1.png",
-            alt: "Platform View 1"
+            id: "pathway",
+            name: "Pathway Map",
+            desc: "Adaptive learning pathways updating dynamically in real time.",
+            animation: snake,
+            mode: "default" as const,
+            colors: { on: "#06b6d4", off: "#111827" }, // Cyan / Dark Grey
+            status: "GENERATING VECTOR ROUTES",
+            fps: 15
         },
         {
-            src: "/p2.png",
-            alt: "Platform View 2"
+            id: "cognitive",
+            name: "Cognitive Wave",
+            desc: "Mapping curriculum graphs & semantic associations.",
+            animation: wave,
+            mode: "default" as const,
+            colors: { on: "#8b5cf6", off: "#111827" }, // Purple / Dark Grey
+            status: "RETRIEVING EMBEDDINGS",
+            fps: 20
         },
         {
-            src: "/p3.png",
-            alt: "Platform View 3"
+            id: "synaptic",
+            name: "Synaptic Pulse",
+            desc: "Simulating neural synapse activation during recall.",
+            animation: pulse,
+            mode: "default" as const,
+            colors: { on: "#ec4899", off: "#111827" }, // Pink / Dark Grey
+            status: "CALCULATING RETRIEVAL STRENGTH",
+            fps: 12
+        },
+        {
+            id: "voice",
+            name: "Voice Tutor Synthesis",
+            desc: "Real-time conversational voice synthesis and tutoring.",
+            animation: undefined,
+            mode: "vu" as const,
+            colors: { on: "#10b981", off: "#111827" }, // Emerald / Dark Grey
+            status: "STREAMING SYNTHETIC AUDIO",
+            fps: 12
         }
     ];
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setCurrentImageIndex((prevIndex) => 
-                prevIndex === images.length - 1 ? 0 : prevIndex + 1
-            );
-        }, 4000); // Change image every 4 seconds
+    const activeMode = modes[activeModeIndex];
 
-        return () => clearInterval(interval);
-    }, [images.length]);
+    // Auto-cycle through modes
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setActiveModeIndex((prev) => (prev + 1) % modes.length);
+        }, 6000);
+        return () => clearInterval(timer);
+    }, [modes.length]);
+
+    // Animate VU levels for the voice tutor mode
+    useEffect(() => {
+        if (activeMode.id !== "voice") return;
+        
+        let frameId: number;
+        let timeoutId: NodeJS.Timeout;
+
+        const updateLevels = () => {
+            setVuLevels(prev => 
+                prev.map(val => {
+                    const change = (Math.random() - 0.5) * 0.4;
+                    return Math.max(0.1, Math.min(0.95, val + change));
+                })
+            );
+            timeoutId = setTimeout(() => {
+                frameId = requestAnimationFrame(updateLevels);
+            }, 80);
+        };
+
+        frameId = requestAnimationFrame(updateLevels);
+        return () => {
+            cancelAnimationFrame(frameId);
+            clearTimeout(timeoutId);
+        };
+    }, [activeMode.id]);
 
     return (
-        <div className="relative aspect-[3/2] rounded-2xl overflow-hidden">
-            {images.map((image, index) => (
-                <div
-                    key={index}
-                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                        index === currentImageIndex ? 'opacity-100' : 'opacity-0'
-                    }`}
-                >
-                    <Image
-                        className="bg-background aspect-[3/2] w-full h-full object-cover rounded-2xl"
-                        src={image.src}
-                        alt={image.alt}
-                        width={1500}
-                        height={1000}
-                        priority={index === 0}
-                    />
-                </div>
-            ))}
+        <div className="bg-zinc-950/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8 max-w-4xl mx-auto shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-zinc-700/50 to-transparent" />
             
-            {/* Carousel Indicators */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex justify-center space-x-2">
-                {images.map((_, index) => (
-                    <button
-                        key={index}
-                        onClick={() => setCurrentImageIndex(index)}
-                        className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                            index === currentImageIndex 
-                                ? 'bg-white scale-125 shadow-lg' 
-                                : 'bg-white/50 hover:bg-white/75'
-                        }`}
-                        aria-label={`Go to slide ${index + 1}`}
+            <div className="flex flex-col gap-3 w-full md:w-3/5 z-10 text-left">
+                <div className="flex items-center justify-between border-b border-zinc-900 pb-3 mb-3 text-[10px] font-mono text-zinc-400 tracking-wider">
+                    <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>SYSTEM: ADHYAYAN NEURAL CORE</span>
+                    </div>
+                    <span className="text-zinc-500">MODE: {activeMode.status}</span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                    {modes.map((mode, idx) => (
+                        <button
+                            key={mode.id}
+                            onClick={() => setActiveModeIndex(idx)}
+                            className={cn(
+                                "text-left p-3.5 rounded-xl border transition-all duration-300 flex flex-col gap-1",
+                                idx === activeModeIndex
+                                    ? "bg-zinc-900/50 border-zinc-800 shadow-[inset_0_1px_1px_rgba(255,255,255,0.03)]"
+                                    : "bg-transparent border-transparent hover:bg-zinc-900/20 hover:border-zinc-900"
+                            )}
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className={cn(
+                                    "font-mono text-xs font-bold tracking-wider uppercase",
+                                    idx === activeModeIndex ? "text-zinc-100" : "text-zinc-500"
+                                )}>
+                                    {mode.name}
+                                </span>
+                                {idx === activeModeIndex && (
+                                    <span 
+                                        className="w-1.5 h-1.5 rounded-full" 
+                                        style={{ 
+                                            backgroundColor: mode.colors.on,
+                                            boxShadow: `0 0 10px 2px ${mode.colors.on}`
+                                        }}
+                                    />
+                                )}
+                            </div>
+                            <span className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
+                                {mode.desc}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="w-full md:w-2/5 flex flex-col items-center justify-center z-10">
+                <div className="relative p-6 rounded-2xl bg-zinc-950/90 border border-zinc-900/80 shadow-[0_0_50px_-12px_rgba(0,0,0,0.8)] flex items-center justify-center aspect-square w-full max-w-[240px]">
+                    {/* Glow backdrop matching current color */}
+                    <div 
+                        className="absolute inset-0 rounded-2xl blur-3xl opacity-20 transition-all duration-700 pointer-events-none"
+                        style={{ 
+                            backgroundColor: activeMode.colors.on,
+                            boxShadow: `0 0 80px 20px ${activeMode.colors.on}`
+                        }}
                     />
-                ))}
+
+                    {activeMode.id === "voice" ? (
+                        <Matrix
+                            rows={7}
+                            cols={8}
+                            mode="vu"
+                            levels={vuLevels}
+                            size={16}
+                            gap={4}
+                            palette={activeMode.colors}
+                            ariaLabel="ADHYAYAN VU Level Meter"
+                        />
+                    ) : (
+                        <Matrix
+                            rows={7}
+                            cols={7}
+                            frames={activeMode.animation}
+                            fps={activeMode.fps}
+                            size={18}
+                            gap={5}
+                            palette={activeMode.colors}
+                            ariaLabel={`ADHYAYAN Matrix ${activeMode.name}`}
+                        />
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -239,13 +352,8 @@ export function HeroSection() {
                                 },
                                 ...transitionVariants,
                             }}>
-                            <div className="relative -mr-56 mt-8 overflow-hidden px-2 sm:mr-0 sm:mt-12 md:mt-20">
-                                <div
-                                    aria-hidden
-                                    className="bg-gradient-to-b to-background absolute inset-0 z-10 from-transparent from-35%"
-                                />                                <div className="inset-shadow-2xs ring-background dark:inset-shadow-white/20 bg-background relative mx-auto max-w-6xl overflow-hidden rounded-2xl border p-4 shadow-lg shadow-zinc-950/15 ring-1">
-                                    <ImageCarousel />
-                                </div>
+                            <div className="relative mx-auto mt-8 max-w-4xl px-4 sm:mt-12 md:mt-20">
+                                <MatrixShowcase />
                             </div>
                         </AnimatedGroup>
                     </div>
