@@ -33,7 +33,7 @@ export default function LearnMore() {
       <HeroHeader />
 
       {/* Hero Section */}
-      <div className="relative pt-44 pb-24 px-4 overflow-hidden border-b border-white/10 bg-black flex flex-col justify-center items-center">
+      <div className="relative pt-36 pb-20 px-4 overflow-hidden border-b border-white/10 bg-black flex flex-col justify-center items-center">
         {/* Starry night sky background image */}
         <div className="absolute inset-0 -z-20 overflow-hidden">
           <Image
@@ -51,9 +51,6 @@ export default function LearnMore() {
 
         <div className="max-w-7xl mx-auto text-center z-10 relative">
           <div className="mb-8">
-            <span className="inline-block px-4 py-2 bg-neutral-800/70 border border-neutral-700/50 rounded-full text-neutral-300 text-sm font-medium mb-6">
-              🎓 Advanced Learning Platform
-            </span>
             <h1 className="eczar-heading font-serif text-5xl md:text-7xl font-bold mb-6 text-white leading-tight">
               Transform Your Learning with Adhyayan AI
             </h1>
