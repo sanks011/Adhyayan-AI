@@ -1,17 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowRight, ChevronRight, Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button1'
 import { AnimatedGroup } from '@/components/ui/animated-group'
 import { cn } from '@/lib/utils'
-import {
-  Matrix,
-  loader,
-  wave,
-  snake,
-  pulse,
-} from "@/components/unlumen-ui/matrix"
 
 const transitionVariants: any = {
     item: {
@@ -33,179 +26,6 @@ const transitionVariants: any = {
     },
 }
 
-// Interactive Matrix Showcase Component
-const MatrixShowcase = () => {
-    const [activeModeIndex, setActiveModeIndex] = useState(0);
-    const [vuLevels, setVuLevels] = useState([0.2, 0.4, 0.6, 0.8, 0.6, 0.4, 0.2, 0.1]);
-
-    const modes = [
-        {
-            id: "pathway",
-            name: "Pathway Map",
-            desc: "Adaptive learning pathways updating dynamically in real time.",
-            animation: snake,
-            mode: "default" as const,
-            colors: { on: "#06b6d4", off: "#111827" }, // Cyan / Dark Grey
-            status: "GENERATING VECTOR ROUTES",
-            fps: 15
-        },
-        {
-            id: "cognitive",
-            name: "Cognitive Wave",
-            desc: "Mapping curriculum graphs & semantic associations.",
-            animation: wave,
-            mode: "default" as const,
-            colors: { on: "#8b5cf6", off: "#111827" }, // Purple / Dark Grey
-            status: "RETRIEVING EMBEDDINGS",
-            fps: 20
-        },
-        {
-            id: "synaptic",
-            name: "Synaptic Pulse",
-            desc: "Simulating neural synapse activation during recall.",
-            animation: pulse,
-            mode: "default" as const,
-            colors: { on: "#ec4899", off: "#111827" }, // Pink / Dark Grey
-            status: "CALCULATING RETRIEVAL STRENGTH",
-            fps: 12
-        },
-        {
-            id: "voice",
-            name: "Voice Tutor Synthesis",
-            desc: "Real-time conversational voice synthesis and tutoring.",
-            animation: undefined,
-            mode: "vu" as const,
-            colors: { on: "#10b981", off: "#111827" }, // Emerald / Dark Grey
-            status: "STREAMING SYNTHETIC AUDIO",
-            fps: 12
-        }
-    ];
-
-    const activeMode = modes[activeModeIndex];
-
-    // Auto-cycle through modes
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setActiveModeIndex((prev) => (prev + 1) % modes.length);
-        }, 6000);
-        return () => clearInterval(timer);
-    }, [modes.length]);
-
-    // Animate VU levels for the voice tutor mode
-    useEffect(() => {
-        if (activeMode.id !== "voice") return;
-        
-        let frameId: number;
-        let timeoutId: NodeJS.Timeout;
-
-        const updateLevels = () => {
-            setVuLevels(prev => 
-                prev.map(val => {
-                    const change = (Math.random() - 0.5) * 0.4;
-                    return Math.max(0.1, Math.min(0.95, val + change));
-                })
-            );
-            timeoutId = setTimeout(() => {
-                frameId = requestAnimationFrame(updateLevels);
-            }, 80);
-        };
-
-        frameId = requestAnimationFrame(updateLevels);
-        return () => {
-            cancelAnimationFrame(frameId);
-            clearTimeout(timeoutId);
-        };
-    }, [activeMode.id]);
-
-    return (
-        <div className="bg-zinc-950/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8 max-w-4xl mx-auto shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-zinc-700/50 to-transparent" />
-            
-            <div className="flex flex-col gap-3 w-full md:w-3/5 z-10 text-left">
-                <div className="flex items-center justify-between border-b border-zinc-900 pb-3 mb-3 text-[10px] font-mono text-zinc-400 tracking-wider">
-                    <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>SYSTEM: ADHYAYAN NEURAL CORE</span>
-                    </div>
-                    <span className="text-zinc-500">MODE: {activeMode.status}</span>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                    {modes.map((mode, idx) => (
-                        <button
-                            key={mode.id}
-                            onClick={() => setActiveModeIndex(idx)}
-                            className={cn(
-                                "text-left p-3.5 rounded-xl border transition-all duration-300 flex flex-col gap-1",
-                                idx === activeModeIndex
-                                    ? "bg-zinc-900/50 border-zinc-800 shadow-[inset_0_1px_1px_rgba(255,255,255,0.03)]"
-                                    : "bg-transparent border-transparent hover:bg-zinc-900/20 hover:border-zinc-900"
-                            )}
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className={cn(
-                                    "font-mono text-xs font-bold tracking-wider uppercase",
-                                    idx === activeModeIndex ? "text-zinc-100" : "text-zinc-500"
-                                )}>
-                                    {mode.name}
-                                </span>
-                                {idx === activeModeIndex && (
-                                    <span 
-                                        className="w-1.5 h-1.5 rounded-full" 
-                                        style={{ 
-                                            backgroundColor: mode.colors.on,
-                                            boxShadow: `0 0 10px 2px ${mode.colors.on}`
-                                        }}
-                                    />
-                                )}
-                            </div>
-                            <span className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
-                                {mode.desc}
-                            </span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="w-full md:w-2/5 flex flex-col items-center justify-center z-10">
-                <div className="relative p-6 rounded-2xl bg-zinc-950/90 border border-zinc-900/80 shadow-[0_0_50px_-12px_rgba(0,0,0,0.8)] flex items-center justify-center aspect-square w-full max-w-[240px]">
-                    {/* Glow backdrop matching current color */}
-                    <div 
-                        className="absolute inset-0 rounded-2xl blur-3xl opacity-20 transition-all duration-700 pointer-events-none"
-                        style={{ 
-                            backgroundColor: activeMode.colors.on,
-                            boxShadow: `0 0 80px 20px ${activeMode.colors.on}`
-                        }}
-                    />
-
-                    {activeMode.id === "voice" ? (
-                        <Matrix
-                            rows={7}
-                            cols={8}
-                            mode="vu"
-                            levels={vuLevels}
-                            size={16}
-                            gap={4}
-                            palette={activeMode.colors}
-                            ariaLabel="ADHYAYAN VU Level Meter"
-                        />
-                    ) : (
-                        <Matrix
-                            rows={7}
-                            cols={7}
-                            frames={activeMode.animation}
-                            fps={activeMode.fps}
-                            size={18}
-                            gap={5}
-                            palette={activeMode.colors}
-                            ariaLabel={`ADHYAYAN Matrix ${activeMode.name}`}
-                        />
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
 
 export function HeroSection() {
     return (
@@ -290,6 +110,7 @@ export function HeroSection() {
                             />
                         </AnimatedGroup>
                         <div aria-hidden className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_75%)]" />
+                        <div aria-hidden className="absolute bottom-0 inset-x-0 h-40 bg-gradient-to-b from-transparent to-background pointer-events-none z-10" />
                         <div className="mx-auto max-w-7xl px-6 relative">
                             
                             <div className="text-center sm:mx-auto lg:mr-auto lg:mt-0">
@@ -352,8 +173,17 @@ export function HeroSection() {
                                 },
                                 ...transitionVariants,
                             }}>
-                            <div className="relative mx-auto mt-8 max-w-4xl px-4 sm:mt-12 md:mt-20">
-                                <MatrixShowcase />
+                            <div className="relative mt-3 sm:mt-4 md:mt-6 mx-auto max-w-5xl px-4 flex justify-center items-center">
+                                <div className="relative w-full overflow-hidden flex justify-center">
+                                    <Image
+                                        className="w-[95%] sm:w-[90%] md:w-[85%] h-auto object-contain select-none mix-blend-multiply dark:invert dark:mix-blend-screen -translate-y-4 sm:-translate-y-6 md:-translate-y-8"
+                                        src="/mindmap.png"
+                                        alt="Adhyayan Mindmap Preview"
+                                        width={2700}
+                                        height={1440}
+                                        priority
+                                    />
+                                </div>
                             </div>
                         </AnimatedGroup>
                     </div>

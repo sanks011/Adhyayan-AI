@@ -11,7 +11,7 @@ export async function sendContactEmail(formData: FormData) {
   const message = formData.get("message") as string
 
   // Create transporter using Gmail (you can use other email services)
-  const transporter = nodemailer.createTransporter({
+  const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER, // Your Gmail address

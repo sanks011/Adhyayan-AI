@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 // Lenis will be dynamically imported on the client to enable smooth scrolling
 
 export default function Home() {
+  useLenis();
   const [showIntro, setShowIntro] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -49,7 +50,7 @@ export default function Home() {
 // Initialize Lenis for smooth scrolling on the home page. We use a dynamic
 // import inside a useEffect so this runs only on the client and doesn't break
 // server-side rendering.
-export function useLenis() {
+function useLenis() {
   useEffect(() => {
     let rafId: number | null = null;
     let lenisInstance: any = null;

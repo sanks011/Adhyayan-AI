@@ -27,7 +27,7 @@ export const LemniscateBloom: React.FC<LemniscateBloomProps> = ({
   const groupRef = useRef<SVGGElement>(null);
   const pathRef = useRef<SVGPathElement>(null);
   const particlesRef = useRef<SVGCircleElement[]>([]);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     // Wait for next tick to ensure DOM is ready

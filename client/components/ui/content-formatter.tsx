@@ -77,7 +77,7 @@ const ContentFormatter: React.FC<ContentFormatterProps> = ({
   const currentTheme = themeStyles[theme];
 
   // Custom component renderers for Markdown elements
-  const components = {
+  const components: any = {
     // Headings
     h1: ({ children }: { children: React.ReactNode }) => (
       <h1

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { cn } from "@/lib/utils";
-import { IconPlay, IconExternalLink, IconBookmark, IconVideo, IconPhoto, IconFileText, IconChevronDown, IconChevronUp, IconBrandYoutube } from "@tabler/icons-react";
+import { IconExternalLink, IconBookmark, IconVideo, IconPhoto, IconFileText, IconChevronDown, IconChevronUp, IconBrandYoutube } from "@tabler/icons-react";
 import ContentFormatter from "@/components/ui/content-formatter";
 
 interface MultimediaImage {
