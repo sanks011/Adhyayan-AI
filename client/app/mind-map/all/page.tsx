@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiService } from '@/lib/api';
 import { FloatingDock } from "@/components/ui/floating-dock";
-import { WavyBackground } from "@/components/ui/wavy-background";
+import DarkVeil from "@/components/DarkVeil";
 import { GyanPointsDisplay } from "@/components/custom/GyanPointsDisplay";
 import { Card, CardBody, Button, Input, Skeleton, Chip, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, useDisclosure } from "@heroui/react";
 import BlackHoleLoader from "@/components/ui/black-hole-loader";
@@ -319,12 +319,23 @@ export default function AllMindMaps() {
   }
 
   return (
-    <div className="min-h-screen relative">
-      <WavyBackground className="min-h-screen flex flex-col p-8 relative">
-        {/* Gyan Points Display - Top Right Corner */}
-        <div className="fixed top-4 right-4 z-50 md:top-6 md:right-8 lg:right-12">
-          <GyanPointsDisplay />
-        </div>
+    <div className="min-h-screen relative flex flex-col p-8 bg-black overflow-x-hidden">
+      {/* Background Container */}
+      <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <DarkVeil
+          hueShift={0}
+          noiseIntensity={0}
+          scanlineIntensity={0}
+          speed={0.5}
+          scanlineFrequency={0}
+          warpAmount={0}
+          resolutionScale={1}
+        />
+      </div>
+      {/* Gyan Points Display - Top Right Corner */}
+      <div className="fixed top-4 right-4 z-50 md:top-6 md:right-8 lg:right-12">
+        <GyanPointsDisplay />
+      </div>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-8 z-10">
@@ -571,7 +582,6 @@ export default function AllMindMaps() {
           <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl"></div>
           <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-500/10 rounded-full blur-3xl"></div>
         </div>
-      </WavyBackground>
       
       {/* Delete Confirmation Modal */}
       <Modal isOpen={isOpen} onClose={onClose} backdrop="blur">

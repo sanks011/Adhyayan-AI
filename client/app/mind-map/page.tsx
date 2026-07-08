@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { apiService } from '@/lib/api';
 import { FloatingDock } from "@/components/ui/floating-dock";
-import { WavyBackground } from "@/components/ui/wavy-background";
+import DarkVeil from "@/components/DarkVeil";
 import { GyanPointsDisplay } from "@/components/custom/GyanPointsDisplay";
 import PreviousMindMaps from "@/components/custom/PreviousMindMaps";
 import { Textarea, Input, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
@@ -528,12 +528,23 @@ Use the quiz feature to test your understanding and the AI chat to ask specific 
     },
   ];
   return (
-    <div className="min-h-screen relative">
-      <WavyBackground className="min-h-screen flex flex-col items-center p-8 pt-24 relative">
-          {/* Gyan Points Display - Top Right Corner */}
-        <div className="fixed top-4 right-4 z-50 md:top-6 md:right-8 lg:right-12">
-          <GyanPointsDisplay />
-        </div>
+    <div className="min-h-screen relative flex flex-col items-center p-8 pt-24 bg-black overflow-x-hidden">
+      {/* Background Container */}
+      <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <DarkVeil
+          hueShift={0}
+          noiseIntensity={0}
+          scanlineIntensity={0}
+          speed={0.5}
+          scanlineFrequency={0}
+          warpAmount={0}
+          resolutionScale={1}
+        />
+      </div>
+      {/* Gyan Points Display - Top Right Corner */}
+      <div className="fixed top-4 right-4 z-50 md:top-6 md:right-8 lg:right-12">
+        <GyanPointsDisplay />
+      </div>
         
         {/* Page Header */}
         <div className="text-center mb-12 z-10 w-full">
@@ -895,7 +906,7 @@ Use the quiz feature to test your understanding and the AI chat to ask specific 
               </>
             )}
           </ModalContent>        </Modal>
-      </WavyBackground>      {/* Toast Notifications */}
+      {/* Toast Notifications */}
       <Toaster 
         position="top-center"
         reverseOrder={false}
