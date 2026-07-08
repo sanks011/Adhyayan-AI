@@ -499,24 +499,24 @@ button:focus {
 
 /* Force explicit text color classes to bypass the aggressive .dark * override */
 .dark .text-black,
-.dark .text-black *,
-.dark .dark\:text-black,
-.dark .dark\:text-black * {
+.dark .dark\:text-black {
   color: #000000 !important;
 }
 
 .dark .text-neutral-400,
-.dark .text-neutral-400 *,
-.dark .dark\:text-neutral-400,
-.dark .dark\:text-neutral-400 * {
+.dark .dark\:text-neutral-400 {
   color: #a3a3a3 !important;
 }
 
 .dark .text-neutral-500,
-.dark .text-neutral-500 *,
-.dark .dark\:text-neutral-500,
-.dark .dark\:text-neutral-500 * {
+.dark .dark\:text-neutral-500 {
   color: #737373 !important;
+}
+
+/* Ensure child elements inside a text color container inherit the parent's color unless they have their own explicit color class or gradient clip */
+.dark [class*="text-"] *:not([class*="text-"]):not([class*="bg-clip-text"]),
+.dark [class*="dark:text-"] *:not([class*="text-"]):not([class*="bg-clip-text"]) {
+  color: inherit !important;
 }
 
 
