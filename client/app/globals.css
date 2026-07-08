@@ -497,4 +497,26 @@ button:focus {
   z-index: 9999 !important;
 }
 
+/* Force explicit text color classes to bypass the aggressive .dark * override */
+.dark .text-black,
+.dark .text-black *,
+.dark .dark\:text-black,
+.dark .dark\:text-black * {
+  color: #000000 !important;
+}
+
+.dark .text-neutral-400,
+.dark .text-neutral-400 *,
+.dark .dark\:text-neutral-400,
+.dark .dark\:text-neutral-400 * {
+  color: #a3a3a3 !important;
+}
+
+.dark .text-neutral-500,
+.dark .text-neutral-500 *,
+.dark .dark\:text-neutral-500,
+.dark .dark\:text-neutral-500 * {
+  color: #737373 !important;
+}
+
 

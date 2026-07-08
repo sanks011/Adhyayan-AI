@@ -1,10 +1,9 @@
 "use client";
 import React from 'react';
-import { CustomNavbar } from "@/components/custom/CustomNavbar";
 import { ProfessionalFooter } from "@/components/custom/ProfessionalFooter";
-import { WavyBackground } from "@/components/ui/wavy-background";
+import Image from 'next/image';
 import { GlowingEffect } from "@/components/ui/glowing-effect";
-import { CustomStickyBanner } from "@/components/custom/CustomStickyBanner";
+import { HeroHeader } from "@/components/hero-section-1";
 import {
   BookOpen,
   Map,
@@ -31,45 +30,56 @@ import {
 export default function LearnMore() {
   return (
     <div className="min-h-screen bg-black text-white learn-more-page">
-      <div className="relative z-50">
-        <CustomStickyBanner />
-        <CustomNavbar />      </div>
+      <HeroHeader />
 
       {/* Hero Section */}
-      <WavyBackground
-        containerClassName="pt-20 pb-20 px-4"
-        className="max-w-7xl mx-auto text-center"
-      >
-        <div className="mb-8">          <span className="inline-block px-4 py-2 bg-neutral-800/70 border border-neutral-700/50 rounded-full text-neutral-300 text-sm font-medium mb-6">
-          🎓 Advanced Learning Platform
-        </span>
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent">
-            Transform Your Learning with{" "}
-            <span className="text-white">
-              Adhyayan AI
+      <div className="relative pt-44 pb-24 px-4 overflow-hidden border-b border-white/10 bg-black flex flex-col justify-center items-center">
+        {/* Starry night sky background image */}
+        <div className="absolute inset-0 -z-20 overflow-hidden">
+          <Image
+            src="https://ik.imagekit.io/lrigu76hy/tailark/night-background.jpg?updatedAt=1745733451120"
+            alt="background"
+            fill
+            className="object-cover opacity-60 pointer-events-none"
+            priority
+          />
+        </div>
+        {/* Radial gradient overlay */}
+        <div aria-hidden className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_75%)]" />
+        {/* Bottom fade overlay */}
+        <div aria-hidden className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-b from-transparent to-background pointer-events-none z-10" />
+
+        <div className="max-w-7xl mx-auto text-center z-10 relative">
+          <div className="mb-8">
+            <span className="inline-block px-4 py-2 bg-neutral-800/70 border border-neutral-700/50 rounded-full text-neutral-300 text-sm font-medium mb-6">
+              🎓 Advanced Learning Platform
             </span>
-          </h1>
-          <p className="text-xl md:text-2xl text-neutral-400 max-w-4xl mx-auto leading-relaxed">
-            Experience the future of education with our AI-powered platform that adapts to your learning style,
-            creates personalized study paths, and makes complex topics easy to understand.
-          </p>
+            <h1 className="eczar-heading font-serif text-5xl md:text-7xl font-bold mb-6 text-white leading-tight">
+              Transform Your Learning with Adhyayan AI
+            </h1>
+            <p className="text-xl md:text-2xl text-neutral-400 max-w-4xl mx-auto leading-relaxed">
+              Experience the future of education with our AI-powered platform that adapts to your learning style,
+              creates personalized study paths, and makes complex topics easy to understand.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mt-12">
+            <button
+              onClick={() => window.open('https://youtu.be/demo', '_blank')}
+              className="bg-white text-black hover:bg-neutral-200 hover:text-black px-8 py-4 rounded-lg font-semibold text-lg transform hover:scale-105 transition-all duration-300 flex items-center gap-2 shadow-lg"
+            >
+              <Play className="w-5 h-5 text-black fill-current" style={{ color: '#000' }} />
+              Watch Demo
+            </button>
+            <button
+              onClick={() => window.open('/guide.pdf', '_blank')}
+              className="border border-neutral-600 hover:border-neutral-400 text-neutral-300 hover:text-white bg-transparent px-8 py-4 rounded-lg font-semibold text-lg transition-all duration-300 flex items-center gap-2"
+            >
+              <Download className="w-5 h-5" />
+              Download Guide
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mt-12">
-          <button
-            onClick={() => window.open('https://youtu.be/demo', '_blank')}
-            className="bg-white text-black hover:bg-gray-100 hover:text-black px-8 py-4 rounded-lg font-semibold text-lg transform hover:scale-105 transition-all duration-300 flex items-center gap-2 shadow-lg"
-          >            <Play className="w-5 h-5 text-black fill-current" style={{ color: '#000' }} />
-            Watch Demo
-          </button>
-          <button
-            onClick={() => window.open('/guide.pdf', '_blank')}
-            className="border border-neutral-600 hover:border-neutral-400 text-neutral-300 hover:text-white bg-transparent px-8 py-4 rounded-lg font-semibold text-lg transition-all duration-300 flex items-center gap-2"
-          >
-            <Download className="w-5 h-5" />
-            Download Guide
-          </button>
-        </div>
-      </WavyBackground>
+      </div>
 
       {/* Stats Section */}
       <section className="py-20 px-4">
@@ -320,19 +330,19 @@ interface FeatureCardProps {
 
 const FeatureCard = ({ icon, title, description, features }: FeatureCardProps) => {
   return (
-    <div className="relative group">
-      <div className="absolute inset-0 bg-gradient-to-br from-neutral-800/10 to-neutral-900/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-      <div className="relative bg-neutral-900/50 backdrop-blur-sm border border-neutral-800 rounded-2xl p-8 hover:border-neutral-600 transition-all duration-300">
-        <GlowingEffect spread={40} glow={true} disabled={false} proximity={64} inactiveZone={0.01} />
+    <div className="relative rounded-2xl border border-neutral-800 p-2 md:rounded-3xl md:p-3 h-full">
+      <GlowingEffect spread={40} glow={true} disabled={false} proximity={64} inactiveZone={0.01} />
+      <div className="border-0.75 relative flex h-full flex-col gap-6 overflow-hidden rounded-xl p-6 bg-[#0a0a0a]/80 backdrop-blur-sm border-neutral-800">
+        <div>
+          <div className="text-neutral-400 mb-4">{icon}</div>
+          <h3 className="text-xl font-bold mb-3 text-white">{title}</h3>
+          <p className="text-neutral-400 mb-4 text-sm leading-relaxed">{description}</p>
+        </div>
 
-        <div className="text-neutral-400 mb-6">{icon}</div>
-        <h3 className="text-xl font-bold mb-4">{title}</h3>
-        <p className="text-neutral-400 mb-6 leading-relaxed">{description}</p>
-
-        <ul className="space-y-2">
+        <ul className="space-y-2 mt-auto">
           {features.map((feature, index) => (
-            <li key={index} className="flex items-center gap-2 text-sm text-neutral-300">
-              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+            <li key={index} className="flex items-center gap-2 text-xs text-neutral-300">
+              <CheckCircle className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
               {feature}
             </li>
           ))}
@@ -353,7 +363,7 @@ const StepCard = ({ number, title, description, icon }: StepCardProps) => {
   return (
     <div className="text-center group">
       <div className="relative mb-8">
-        <div className="w-20 h-20 bg-gradient-to-br from-neutral-700 to-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+        <div className="w-20 h-20 bg-neutral-900 border border-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
           {icon}
         </div>
         <div className="absolute -top-2 -right-2 w-8 h-8 bg-neutral-800 border-2 border-white rounded-full flex items-center justify-center text-xs font-bold text-white">
@@ -395,16 +405,21 @@ interface TestimonialCardProps {
 
 const TestimonialCard = ({ quote, author, role, rating }: TestimonialCardProps) => {
   return (
-    <div className="bg-neutral-900/50 backdrop-blur-sm border border-neutral-800 rounded-2xl p-6 hover:border-neutral-600 transition-all duration-300">
-      <div className="flex mb-4">
-        {[...Array(rating)].map((_, i) => (
-          <Star key={i} className="w-5 h-5 text-yellow-400 fill-current" />
-        ))}
-      </div>
-      <p className="text-neutral-300 mb-6 leading-relaxed">"{quote}"</p>
-      <div>
-        <div className="font-semibold">{author}</div>
-        <div className="text-sm text-neutral-400">{role}</div>
+    <div className="relative rounded-2xl border border-neutral-800 p-2 md:rounded-3xl md:p-3 h-full">
+      <GlowingEffect spread={40} glow={true} disabled={false} proximity={64} inactiveZone={0.01} />
+      <div className="border-0.75 relative flex h-full flex-col justify-between gap-6 overflow-hidden rounded-xl p-6 bg-[#0a0a0a]/80 backdrop-blur-sm border-neutral-800">
+        <div>
+          <div className="flex mb-4">
+            {[...Array(rating)].map((_, i) => (
+              <Star key={i} className="w-4 h-4 text-white fill-current" />
+            ))}
+          </div>
+          <p className="text-neutral-300 mb-6 text-sm leading-relaxed">"{quote}"</p>
+        </div>
+        <div>
+          <div className="font-semibold text-white text-sm">{author}</div>
+          <div className="text-xs text-neutral-400">{role}</div>
+        </div>
       </div>
     </div>
   );

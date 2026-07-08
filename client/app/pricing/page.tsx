@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useRouter } from 'next/navigation';
-import { Vortex } from '@/components/ui/vortex';
-import { CustomNavbar } from "@/components/custom/CustomNavbar";
-import { CustomStickyBanner } from "@/components/custom/CustomStickyBanner";
+import Image from 'next/image';
+import { HeroHeader } from "@/components/hero-section-1";
+import { GlowingEffect } from "@/components/ui/glowing-effect";
 import { 
   IconCheck, 
   IconCrown, 
@@ -180,38 +180,42 @@ const faqs = [
 const StyledWrapper = styled.div`
   .card-container {
     width: 280px;
-    background: linear-gradient(to top right, #975af4, #2f7cf8 40%, #78aafa 65%, #934cff);
-    padding: 4px;
+    background: #0a0a0a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1px;
     border-radius: 24px;
     display: flex;
     flex-direction: column;
-    transition: transform 0.3s ease-in-out;
+    transition: all 0.3s ease-in-out;
   }
   .card-container:hover {
-    transform: scale(1.05);
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.3);
   }
   .card-container.popular {
-    box-shadow: 0 0 20px rgba(151, 90, 244, 0.5);
+    border-color: #ffffff;
+    box-shadow: 0 0 25px rgba(255, 255, 255, 0.08);
   }
   .card-container .title-card {
     display: flex;
     align-items: center;
-    padding: 12px 16px;
+    padding: 8px 16px;
     justify-content: space-between;
-    color: #fff;
+    color: #000000;
+    background: #ffffff;
+    border-radius: 20px 20px 0 0;
   }
   .card-container .title-card p {
-    font-size: 12px;
-    font-weight: 600;
-    font-style: italic;
-    text-shadow: 1px 1px 4px #2975ee;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
   }
   .card-container .card-content {
-    background-color: #1a1e24;
+    background-color: #0a0a0a;
     border-radius: 22px;
     color: #bab9b9;
     font-size: 14px;
-    padding: 16px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -241,26 +245,33 @@ const StyledWrapper = styled.div`
     text-align: center;
   }
   .card-container .card-content .card-btn {
-    background: linear-gradient(4deg, #975af4, #2f7cf8 40%, #78aafa 65%, #934cff);
-    padding: 8px;
-    border: none;
+    background: transparent;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 10px;
     width: 100%;
     border-radius: 8px;
-    color: rgba(255, 255, 255, 0.8);
     font-size: 14px;
     font-weight: 600;
     transition: all 0.3s ease-in-out;
     cursor: pointer;
-    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
   }
-  .card-container .card-content .card-btn:hover {
-    color: #ffffff;
-    text-shadow: 0 0 8px #fff;
-    transform: scale(1.03);
+  .card-container .card-content .card-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #ffffff;
+  }
+  .card-container.popular .card-content .card-btn {
+    background: #ffffff;
+    color: #000000;
+    border: none;
+  }
+  .card-container.popular .card-content .card-btn:hover {
+    background: #e2e8f0;
   }
   .card-container .card-content .card-btn:disabled {
-    background: #4a4a4a;
-    color: #838383;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.05);
     cursor: not-allowed;
   }
   .card-container .card-content .card-separate {
@@ -295,7 +306,8 @@ const StyledWrapper = styled.div`
     align-items: flex-start;
     position: relative;
     padding: 2px;
-    background-color: #2a2e34;
+    background-color: #1a1e24;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 9px;
     margin: 10px 20px 0px 20px;
   }
@@ -316,7 +328,7 @@ const StyledWrapper = styled.div`
     font-size: 14px;
   }
   .tab.active {
-    color: #ffffff;
+    color: #000000;
   }
   .indicator {
     width: 50%;
@@ -326,8 +338,6 @@ const StyledWrapper = styled.div`
     top: 2px;
     left: 2px;
     z-index: 9;
-    border: 0.5px solid rgba(0, 0, 0, 0.04);
-    box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.12), 0px 3px 1px rgba(0, 0, 0, 0.04);
     border-radius: 7px;
     transition: all 0.2s ease-out;
   }
@@ -341,14 +351,16 @@ const StyledWrapper = styled.div`
   }
 
   .faq-container {
-    background: #1a1e24;
+    background: #0a0a0a;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 16px;
     padding: 16px;
     cursor: pointer;
     transition: all 0.3s ease-in-out;
   }
   .faq-container:hover {
-    background: #22262c;
+    background: #111111;
+    border-color: rgba(255, 255, 255, 0.1);
   }
   .faq-container .faq-header {
     display: flex;
@@ -367,37 +379,53 @@ const StyledWrapper = styled.div`
   }
 
   .cta-button {
-    background: linear-gradient(4deg, #975af4, #2f7cf8 40%, #78aafa 65%, #934cff);
-    padding: 12px 24px;
+    background: #ffffff;
+    color: #000000 !important;
+    padding: 12px 28px;
     border: none;
     border-radius: 8px;
-    color: #ffffff;
     font-size: 16px;
     font-weight: 600;
     transition: all 0.3s ease-in-out;
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    cursor: pointer;
+  }
+  .cta-button svg,
+  .cta-button * {
+    color: #000000 !important;
   }
   .cta-button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 12px rgba(151, 90, 244, 0.5);
+    background: #e2e8f0;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
   }
 
   .currency-toggle {
-    background: #2a2e34;
+    background: #1a1e24;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 999px;
     padding: 2px;
   }
   .currency-button {
-    padding: 8px 16px;
+    padding: 6px 14px;
     border-radius: 999px;
-    font-size: 14px;
+    font-size: 13px;
     transition: all 0.3s ease-in-out;
+    color: rgba(255, 255, 255, 0.6);
+    background: transparent;
+    border: none;
+    cursor: pointer;
   }
   .currency-button.active {
     background: #ffffff;
-    color: #1a1e24;
+    color: #000000 !important;
+    font-weight: 600;
+  }
+  .currency-button.active svg,
+  .currency-button.active * {
+    color: #000000 !important;
   }
 `;
 
@@ -471,37 +499,43 @@ export default function PricingPage() {
   return (
     <StyledWrapper>
       <div className="min-h-screen bg-black text-white">
-        <div className="relative z-50">
-          <CustomStickyBanner />
-          <CustomNavbar />
-        </div>
+        <HeroHeader />
         {/* Hero Section */}
-        <div className="relative h-[32rem] overflow-hidden">
-          <Vortex
-            backgroundColor="black"
-            className="flex items-center flex-col justify-center px-4 py-4 w-full h-full"
-          >
-            <div className="text-center max-w-4xl mx-auto z-10">
-              <h1 className="text-4xl md:text-6xl font-bold mb-6">
-                Choose Your
-                <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  {" "}Learning Path
-                </span>
-              </h1>
-              <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-                Unlock your potential with AI-powered learning. Select the perfect plan to fuel your educational journey.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center gap-4 mt-8 justify-center">
-                <button className="cta-button">
-                  <IconSparkles className="h-5 w-5" />
-                  Start Free Trial
-                </button>
-                <button className="px-6 py-3 text-white/80 hover:text-white transition-colors">
-                  View Demo
-                </button>
-              </div>
-              {/* Currency Toggle */}
-              <div className="currency-toggle flex items-center justify-center gap-2 mt-8">
+        <div className="relative pt-44 pb-24 flex items-center justify-center overflow-hidden border-b border-white/10 bg-black">
+          {/* Starry night sky background image */}
+          <div className="absolute inset-0 -z-20 overflow-hidden">
+            <Image
+              src="https://ik.imagekit.io/lrigu76hy/tailark/night-background.jpg?updatedAt=1745733451120"
+              alt="background"
+              fill
+              className="object-cover opacity-60 pointer-events-none"
+              priority
+            />
+          </div>
+          {/* Radial gradient overlay */}
+          <div aria-hidden className="absolute inset-0 -z-10 size-full [background:radial-gradient(125%_125%_at_50%_100%,transparent_0%,var(--background)_75%)]" />
+          {/* Bottom fade overlay */}
+          <div aria-hidden className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-b from-transparent to-background pointer-events-none z-10" />
+
+          <div className="text-center max-w-4xl mx-auto z-10 px-4">
+            <h1 className="eczar-heading font-serif text-5xl md:text-7xl font-bold mb-6 text-white leading-tight">
+              Choose Your Learning Path
+            </h1>
+            <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+              Unlock your potential with AI-powered learning. Select the perfect plan to fuel your educational journey.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center gap-4 mt-8 justify-center">
+              <button className="cta-button">
+                <IconSparkles className="h-5 w-5" />
+                Start Free Trial
+              </button>
+              <button className="px-6 py-3 border border-white/10 hover:border-white/30 rounded-lg text-white/80 hover:text-white transition-all bg-white/5 backdrop-blur-sm">
+                View Demo
+              </button>
+            </div>
+            {/* Currency Toggle */}
+            <div className="flex justify-center mt-8">
+              <div className="currency-toggle flex items-center gap-2">
                 <button
                   onClick={() => setCurrency('INR')}
                   className={clsx("currency-button", { active: currency === 'INR' })}
@@ -518,7 +552,7 @@ export default function PricingPage() {
                 </button>
               </div>
             </div>
-          </Vortex>
+          </div>
         </div>
 
         {/* Pricing Plans */}
@@ -553,51 +587,77 @@ export default function PricingPage() {
               return (
                 <div
                   key={index}
-                  className={clsx("card-container", { popular: plan.popular })}
+                  className={clsx("relative h-full rounded-2xl border p-2 md:rounded-3xl md:p-3", plan.popular ? "border-white/20" : "border-neutral-800")}
                 >
-                  {plan.popular && (
-                    <div className="title-card">
-                      <p>MOST POPULAR</p>
-                      <svg xmlns="http://www.w3.org/2000/svg" width={16} height={16} viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M10.277 16.515c.005-.11.187-.154.24-.058c.254.45.686 1.111 1.177 1.412c.49.3 1.275.386 1.791.408c.11.005.154.186.058.24c-.45.254-1.111.686-1.412 1.176s-.386 1.276-.408 1.792c-.005.11-.187.153-.24.057c-.254-.45-.686-1.11-1.176-1.411s-1.276-.386-1.792-.408c-.11-.005-.153-.187-.057-.24c.45-.254 1.11-.686 1.411-1.177c.301-.49.386-1.276.408-1.791m8.215-1c-.008-.11-.2-.156-.257-.062c-.172.283-.421.623-.697.793s-.693.236-1.023.262c-.11.008-.155.2-.062.257c.283.172.624.42.793.697s.237.693.262 1.023c.009.11.2.155.258.061c.172-.282.42-.623.697-.792s.692-.237 1.022-.262c.11-.009.156-.2.062-.258c-.283-.172-.624-.42-.793-.697s-.236-.692-.262-1.022M14.704 4.002l-.242-.306c-.937-1.183-1.405-1.775-1.95-1.688c-.545.088-.806.796-1.327 2.213l-.134.366c-.149.403-.223.604-.364.752c-.143.148-.336.225-.724.38l-.353.141l-.248.1c-1.2.48-1.804.753-1.881 1.283c-.082.565.49 1.049 1.634 2.016l.296.25c.325.275.488.413.58.6c.094.187.107.403.134.835l.024.393c.093 1.52.14 2.28.634 2.542s1.108-.147 2.336-.966l.318-.212c.35-.233.524-.35.723-.381c.2-.032.402.024.806.136l.368.102c1.422.394 2.133.591 2.52.188c.388-.403.196-1.14-.19-2.613l-.099-.381c-.11-.419-.164-.628-.134-.835s.142-.389.365-.752l.203-.33c.786-1.276 1.179-1.914.924-2.426c-.254-.51-.987-.557-2.454-.648l-.379-.024c-.417-.026-.625-.039-.806-.135c-.18-.096-.314-.264-.58-.6m-5.869 9.324C6.698 14.37 4.919 16.024 4.248 18c-.752-4.707.292-7.747 1.965-9.637c.144.295.332.539.5.73c.35.396.852.82 1.362 1.251l.367.31l.17.145c.005.064.01.14.015.237l.03.485c.04.655.08 1.294.178 1.805" />
-                      </svg>
-                    </div>
-                  )}
-                  <div className="card-content">
-                    <p className="title">{plan.name}</p>
-                    <div className="plain">                      
-                        <span>{formatPrice(plan.priceINR, plan.priceUSD)}</span>
-                      <span>{typeof plan.period === 'string' ? plan.period : plan.period[billingCycle]}</span>
-                    </div>
-                    <p className="description">{plan.description}</p>
-                    <button
-                      className="card-btn"
-                      disabled={plan.disabled}
-                      onClick={() => handlePlanSelect(plan.name)}
-                    >
-                      {plan.buttonText || (plan.popular ? 'Get Started - Most Popular' : 'Get Started')}
-                    </button>
-                    <div className="card-separate">
-                      <div className="separate" />
-                      <p>FEATURES</p>
-                      <div className="separate" />
-                    </div>
-                    <div className="card-list-features">
-                      {plan.features.map((feature, featureIndex) => (
-                        <div key={featureIndex} className="option">
-                          <svg viewBox="0 0 24 24" height={14} width={14} xmlns="http://www.w3.org/2000/svg">
-                            <g strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" stroke="currentColor" fill="none">
-                              <rect rx={4} y={3} x={3} height={18} width={18} />
-                              <path d="m9 12l2.25 2L15 10" />
-                            </g>
-                          </svg>
-                          <p>{feature}</p>
+                  <GlowingEffect
+                    spread={40}
+                    glow={true}
+                    disabled={false}
+                    proximity={64}
+                    inactiveZone={0.01}
+                  />
+                  <div className={clsx(
+                    "border-0.75 relative flex h-full flex-col justify-between gap-6 overflow-hidden rounded-xl p-6 md:p-6 bg-[#0a0a0a]/80 backdrop-blur-sm border-neutral-800",
+                    plan.popular ? "dark:shadow-[0px_0px_27px_0px_rgba(255,255,255,0.05)]" : "dark:shadow-[0px_0px_27px_0px_#2D2D2D]"
+                  )}>
+                    {plan.popular && (
+                      <div className="absolute top-0 right-0 left-0 bg-white text-black text-[10px] font-bold py-1 px-3 text-center uppercase tracking-wider flex items-center justify-center gap-1 z-10">
+                        <IconCrown className="h-3.5 w-3.5" />
+                        Most Popular
+                      </div>
+                    )}
+                    <div className={clsx("flex flex-col gap-4 flex-1", plan.popular && "pt-6")}>
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-white">
+                          <IconComponent className="h-5 w-5" />
                         </div>
-                      ))}
-                    </div>
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r ${plan.color} text-white text-sm font-medium mt-4`}>
-                      <IconSparkles className="h-4 w-4" />
-                      <span>{plan.gyanPoints} Gyan Points</span>
+                        <span className="font-sans text-xl font-semibold text-white">{plan.name}</span>
+                      </div>
+                      <p className="text-neutral-400 text-sm leading-relaxed">{plan.description}</p>
+                      
+                      <div className="flex items-baseline gap-1 my-2">                      
+                        <span className="text-3xl md:text-4xl font-bold text-white">
+                          {formatPrice(plan.priceINR, plan.priceUSD)}
+                        </span>
+                        <span className="text-neutral-500 text-xs">
+                          {typeof plan.period === 'string' ? plan.period : plan.period[billingCycle]}
+                        </span>
+                      </div>
+
+                      <button
+                        className={clsx(
+                          "w-full py-2.5 px-4 rounded-lg text-sm font-semibold transition duration-200 cursor-pointer",
+                          plan.popular
+                            ? "bg-white text-black hover:bg-neutral-200"
+                            : "bg-transparent text-white border border-neutral-700 hover:border-neutral-500 hover:bg-white/5",
+                          plan.disabled && "opacity-50 cursor-not-allowed"
+                        )}
+                        disabled={plan.disabled}
+                        onClick={() => handlePlanSelect(plan.name)}
+                      >
+                        {plan.buttonText || (plan.popular ? 'Get Started' : 'Get Started')}
+                      </button>
+
+                      <div className="w-full h-px bg-neutral-800 my-2" />
+
+                      <div className="space-y-2">
+                        {plan.features.map((feature, featureIndex) => (
+                          <div key={featureIndex} className="flex items-start gap-2 text-sm text-neutral-300">
+                            <svg viewBox="0 0 24 24" height={14} width={14} className="mt-1 text-neutral-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
+                              <g strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" stroke="currentColor" fill="none">
+                                <rect rx={4} y={3} x={3} height={18} width={18} />
+                                <path d="m9 12l2.25 2L15 10" />
+                              </g>
+                            </svg>
+                            <span className="text-xs leading-relaxed">{feature}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-white text-xs font-medium mt-auto w-fit">
+                        <IconSparkles className="h-3.5 w-3.5 text-neutral-400" />
+                        <span>{plan.gyanPoints} Gyan Points</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -609,11 +669,8 @@ export default function PricingPage() {
         {/* Additional Gyan Points Packs */}
         <div className="container mx-auto px-4 py-16 border-t border-white/10">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">
-              Top-up Your
-              <span className="bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">
-                {" "}Gyan Points
-              </span>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 czar-heading font-serif">
+              Top-up Your Gyan Points
             </h2>
             <p className="text-white/60 text-lg max-w-2xl mx-auto">
               Need more points? Purchase additional Gyan Points to supercharge your learning experience.
@@ -624,26 +681,45 @@ export default function PricingPage() {
             {additionalPacks.map((pack, index) => {
               const IconComponent = pack.icon;
               return (
-                <div key={index} className="card-container">
-                  <div className="card-content">
-                    <div className={`inline-flex p-3 rounded-xl bg-gradient-to-r ${pack.color} mb-4`}>
-                      <IconComponent className="h-6 w-6 text-white" />
-                    </div>
-                    <p className="title">{pack.name}</p>
-                    <p className="description">{pack.description}</p>
-                    <div className="text-xs text-green-400 font-medium mb-4">{pack.value}</div>
-                    <div className="plain">
-                      <span>{formatPrice({ monthly: pack.priceINR, annual: pack.priceINR }, { monthly: pack.priceUSD, annual: pack.priceUSD })}</span>
-                    </div>
-                    <button
-                      className="card-btn"
-                      onClick={() => handleTopUpPurchase(pack.name, currency === 'INR' ? pack.priceINR : pack.priceUSD)}
-                    >
-                      Purchase Now
-                    </button>
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r ${pack.color} text-white text-sm font-medium mt-4`}>
-                      <IconSparkles className="h-4 w-4" />
-                      <span>{pack.points} Points</span>
+                <div
+                  key={index}
+                  className="relative rounded-2xl border border-neutral-800 p-2 md:rounded-3xl md:p-3"
+                >
+                  <GlowingEffect
+                    spread={40}
+                    glow={true}
+                    disabled={false}
+                    proximity={64}
+                    inactiveZone={0.01}
+                  />
+                  <div className="border-0.75 relative flex h-full flex-col justify-between gap-6 overflow-hidden rounded-xl p-6 md:p-6 bg-[#0a0a0a]/80 backdrop-blur-sm border-neutral-800 dark:shadow-[0px_0px_27px_0px_#2D2D2D]">
+                    <div className="flex flex-col gap-4 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-white">
+                          <IconComponent className="h-5 w-5" />
+                        </div>
+                        <span className="font-sans text-lg font-semibold text-white">{pack.name}</span>
+                      </div>
+                      <p className="text-neutral-400 text-xs leading-relaxed">{pack.description}</p>
+                      <div className="text-xs text-neutral-400 font-semibold">{pack.value}</div>
+                      
+                      <div className="flex items-baseline gap-1 my-2">                      
+                        <span className="text-2xl md:text-3xl font-bold text-white">
+                          {formatPrice({ monthly: pack.priceINR, annual: pack.priceINR }, { monthly: pack.priceUSD, annual: pack.priceUSD })}
+                        </span>
+                      </div>
+
+                      <button
+                        className="w-full py-2 px-4 rounded-lg text-sm font-semibold transition duration-200 bg-transparent text-white border border-neutral-700 hover:border-neutral-500 hover:bg-white/5 cursor-pointer"
+                        onClick={() => handleTopUpPurchase(pack.name, currency === 'INR' ? pack.priceINR : pack.priceUSD)}
+                      >
+                        Purchase Now
+                      </button>
+
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-white text-xs font-medium mt-auto w-fit">
+                        <IconSparkles className="h-3.5 w-3.5 text-neutral-400" />
+                        <span>{pack.points} Points</span>
+                      </div>
                     </div>
                   </div>
                 </div>
