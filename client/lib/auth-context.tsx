@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { auth } from './firebase';
 import { apiService } from './api';
 import { useRouter } from 'next/navigation';
@@ -206,6 +206,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     }
+
+    // Handle redirect result to log success or catch errors
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log('Redirect sign-in completed successfully');
+        }
+      })
+      .catch((error) => {
+        console.error('Error handling redirect result:', error);
+      });
 
     // Listen to Firebase auth state changes
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {

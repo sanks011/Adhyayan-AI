@@ -481,8 +481,9 @@ class ApiService {
     try {
       // Always try to remove from localStorage first, regardless of API call success
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(`mindmap_${id}`);
-        console.log(`Removed mindmap_${id} from localStorage`);
+        const storageKey = id.startsWith('mindmap_') ? id : `mindmap_${id}`;
+        localStorage.removeItem(storageKey);
+        console.log(`Removed ${storageKey} from localStorage`);
         
         // Track the deletion
         this.trackDeletedMindMap(id);

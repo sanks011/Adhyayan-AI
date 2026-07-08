@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import styled from 'styled-components';
-import { signInWithPopup, signOut } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
@@ -12,10 +12,24 @@ const GoogleSignInButton = () => {
 
   const handleSignIn = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const isMobile = typeof window !== 'undefined' && 
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
       // User will be automatically redirected by the auth state change
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in:', error);
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectError) {
+          console.error('Error signing in with redirect:', redirectError);
+        }
+      }
     }
   };
 

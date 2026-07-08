@@ -993,6 +993,66 @@ app.delete("/api/mindmap/:id", verifyToken, checkDbConnection, async (req, res) 
   }
 });
 
+// Endpoint to parse a syllabus file and extract its text content
+app.post("/api/upload/syllabus", verifyToken, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "No file uploaded",
+      });
+    }
+
+    console.log("Parsing syllabus file of type:", req.file.mimetype);
+    let documentText = "";
+
+    try {
+      if (req.file.mimetype === "application/pdf") {
+        const pdfData = await pdfParse(req.file.buffer);
+        documentText = pdfData.text;
+      } else if (req.file.mimetype.includes("word") || req.file.mimetype.includes("officedocument")) {
+        const result = await mammoth.extractRawText({
+          buffer: req.file.buffer,
+        });
+        documentText = result.value;
+      } else if (req.file.mimetype.includes("image")) {
+        const img = await sharp(req.file.buffer).toBuffer();
+        const { data } = await tesseract.recognize(img, "eng");
+        documentText = data.text;
+      } else {
+        documentText = req.file.buffer.toString("utf8");
+      }
+    } catch (parseError) {
+      console.error("Document parsing error detail:", parseError);
+      return res.status(400).json({
+        success: false,
+        error: "Failed to parse document content: " + parseError.message,
+      });
+    }
+
+    if (!documentText || documentText.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Could not extract text from the document",
+      });
+    }
+
+    console.log(`Extracted ${documentText.length} characters of text`);
+    return res.status(200).json({
+      success: true,
+      extractedText: documentText,
+      filename: req.file.originalname,
+    });
+  } catch (error) {
+    console.error("Error processing syllabus file:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to process syllabus file",
+      details: error.message,
+    });
+  }
+});
+
 // Endpoint to parse a document and create a mind map
 app.post("/api/mindmap/parse-document", verifyToken, upload.single("document"), async (req, res) => {
   try {
