@@ -1,4 +1,5 @@
 "use client";
+// Eczar font is loaded via Google Fonts in the global head; we reference it directly here.
 
 import { cn } from "@/lib/utils";
 import React, { useState } from "react";
@@ -44,6 +45,8 @@ interface MindMapSidebarProps {
   onTopicSelect?: (topicId: string) => void;
   onSubtopicSelect?: (topicId: string, subtopicId: string) => void;
   onToggleReadStatus?: (nodeId: string, isRead: boolean) => void;
+  expandedTopics?: string[];
+  onExpandedTopicsChange?: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 // Recursive component for rendering subtopics at any depth
@@ -92,10 +95,10 @@ const SubtopicRenderer: React.FC<{
             ) : null,
           }}
           className={cn(
-            "text-sm",
+            "text-sm transition-colors",
             open 
-              ? "py-2 pl-2 pr-8 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800"
-              : "py-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              ? "py-2 pl-2 pr-8 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-900/60 dark:text-neutral-300 dark:hover:text-white"
+              : "py-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-800 dark:text-neutral-400 dark:hover:text-white"
           )}
           onClick={() => {
             if (hasChildren) {
@@ -171,17 +174,22 @@ export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
   onTopicSelect,
   onSubtopicSelect,
   onToggleReadStatus,
+  expandedTopics: propExpandedTopics,
+  onExpandedTopicsChange,
 }) => {
   // Always start with the sidebar open for better visibility
   const [open, setOpen] = useState(true);
   
-  // Default to first topic expanded for better UX
-  const [expandedTopics, setExpandedTopics] = useState<string[]>(() => {
+  // Default to first topic expanded for better UX (fallback)
+  const [internalExpandedTopics, setInternalExpandedTopics] = useState<string[]>(() => {
     if (mindMapData && mindMapData.length > 0) {
       return [mindMapData[0].id];
     }
     return [];
   });
+  
+  const expandedTopics = propExpandedTopics !== undefined ? propExpandedTopics : internalExpandedTopics;
+  const setExpandedTopics = onExpandedTopicsChange !== undefined ? onExpandedTopicsChange : setInternalExpandedTopics;
   
   // Add debug logging to understand data issues
   React.useEffect(() => {
@@ -271,7 +279,7 @@ export const MindMapSidebar: React.FC<MindMapSidebarProps> = ({
                           onTopicSelect?.(topic.id);
                         }}
                         className={cn(
-                          "font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-md transition-colors",
+                          "font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-900/60 dark:text-neutral-200 dark:hover:text-white rounded-md transition-colors",
                           open && "pr-10" // Add padding-right when sidebar is open to prevent title overlap
                         )}
                         sidebarOpen={open}
@@ -355,13 +363,25 @@ export const Logo = () => {
   return (
     <Link
       href="#"
-      className="font-normal flex space-x-2 items-center text-sm text-black py-1 relative z-20"
+      className="flex items-center gap-2 py-1 relative z-20 no-underline"
     >
-      <div className="h-5 w-6 bg-black dark:bg-white rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm flex-shrink-0" />
+      <span
+        style={{
+          fontFamily: '"Eczar", serif',
+          fontWeight: 700,
+          fontSize: '1.5rem',
+          lineHeight: 1,
+          color: 'white',
+          letterSpacing: '-0.01em',
+          flexShrink: 0,
+        }}
+      >
+        अ.
+      </span>
       <motion.span
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="font-medium text-black dark:text-white whitespace-pre"
+        className="font-medium text-neutral-200 whitespace-pre text-sm"
       >
         Mind Map Topics
       </motion.span>
@@ -373,9 +393,20 @@ export const LogoIcon = () => {
   return (
     <Link
       href="#"
-      className="font-normal flex space-x-2 items-center text-sm text-black py-1 relative z-20"
+      className="flex items-center justify-center py-1 relative z-20 no-underline"
     >
-      <div className="h-5 w-6 bg-black dark:bg-white rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm flex-shrink-0" />
+      <span
+        style={{
+          fontFamily: '"Eczar", serif',
+          fontWeight: 700,
+          fontSize: '1.5rem',
+          lineHeight: 1,
+          color: 'white',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        अ.
+      </span>
     </Link>
   );
 };
@@ -421,8 +452,8 @@ export const DesktopSidebar = ({
     <>
       <motion.div
         className={cn(
-          "h-full px-4 py-4 hidden md:flex md:flex-col bg-neutral-100 dark:bg-neutral-800 flex-shrink-0",
-          "border-r border-neutral-200 dark:border-neutral-700"
+          "h-full px-4 py-4 hidden md:flex md:flex-col bg-neutral-100 dark:bg-neutral-950 flex-shrink-0",
+          "border-r border-neutral-200 dark:border-neutral-800"
         )}
         animate={{
           width: animate ? (open ? 300 : 60) : 300,
@@ -452,7 +483,7 @@ export const MobileSidebar = ({
     <>
       <div
         className={cn(
-          "h-10 px-4 py-4 flex flex-row md:hidden items-center justify-between bg-neutral-100 dark:bg-neutral-800 w-full"
+          "h-10 px-4 py-4 flex flex-row md:hidden items-center justify-between bg-neutral-100 dark:bg-neutral-950 w-full"
         )}
       >
         <div className="flex justify-end z-20 w-full">
@@ -465,7 +496,7 @@ export const MobileSidebar = ({
           animate={open ? { x: 0, opacity: 1 } : { x: "-100%", opacity: 0 }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
           className={cn(
-            "fixed h-full w-full inset-0 bg-white dark:bg-neutral-900 p-10 z-[100] flex flex-col justify-between",
+            "fixed h-full w-full inset-0 bg-white dark:bg-neutral-950 p-10 z-[100] flex flex-col justify-between",
             open ? "block" : "hidden"
           )}
         >

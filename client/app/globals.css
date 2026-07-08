@@ -519,4 +519,18 @@ button:focus {
   color: inherit !important;
 }
 
+/* ── ReactFlow dark theme overrides ──────────────────────────────── */
+/* Hide the built-in white controls panel — we use CustomControls instead */
+.react-flow__controls {
+  display: none !important;
+}
+
+/* Dark selection box */
+.react-flow__selection {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border: 1px solid rgba(99, 102, 241, 0.4) !important;
+}
+/* ─────────────────────────────────────────────────────────────────── */
+
+
 

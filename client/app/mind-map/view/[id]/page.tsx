@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiService } from '@/lib/api';
 import { FloatingDock } from "@/components/ui/floating-dock";
 import { MindMapSidebar } from "@/components/custom/MindMapSidebar";
+import { AntiGravityDots } from "@/components/custom/AntiGravityDots";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import { MultimediaContentDisplay } from "@/components/custom/MultimediaContentDisplay";
@@ -17,8 +18,8 @@ import { convertBackendDataToSidebarFormat, getFallbackData, generateFallbackMin
 import Head from 'next/head';
 import { 
   ReactFlow, 
-  Controls, 
-  Background, 
+  Background,
+  BackgroundVariant,
   useNodesState, 
   useEdgesState, 
   addEdge, 
@@ -260,6 +261,38 @@ const moveNodeAndChildren = (nodes: Node[], nodeId: string, deltaX: number, delt
       moveNodeAndChildren(nodes, child.id, deltaX, deltaY);
     }
   });
+};
+
+// Custom dark-styled zoom controls panel
+const CustomControls = () => {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  return (
+    <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-1.5">
+      <button
+        onClick={() => zoomIn({ duration: 300 })}
+        title="Zoom In"
+        className="w-8 h-8 rounded-lg bg-neutral-900/90 border border-neutral-700 hover:bg-neutral-700 hover:border-neutral-500 text-neutral-400 hover:text-white flex items-center justify-center transition-all duration-150 backdrop-blur-sm shadow-md"
+      >
+        <IconPlus className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => zoomOut({ duration: 300 })}
+        title="Zoom Out"
+        className="w-8 h-8 rounded-lg bg-neutral-900/90 border border-neutral-700 hover:bg-neutral-700 hover:border-neutral-500 text-neutral-400 hover:text-white flex items-center justify-center transition-all duration-150 backdrop-blur-sm shadow-md"
+      >
+        <IconMinus className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => fitView({ duration: 500, padding: 0.2 })}
+        title="Fit View"
+        className="w-8 h-8 rounded-lg bg-neutral-900/90 border border-neutral-700 hover:bg-neutral-700 hover:border-neutral-500 text-neutral-400 hover:text-white flex items-center justify-center transition-all duration-150 backdrop-blur-sm shadow-md"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+        </svg>
+      </button>
+    </div>
+  );
 };
 
 // Custom node component for expandable/collapsible behavior
@@ -641,8 +674,8 @@ function MindMapContent() {
   const [descriptionErrors, setDescriptionErrors] = useState<Record<string, string>>({});
   const MAX_DESCRIPTION_RETRIES = 2;
   
-  // React Flow instance ref for controlling view
-  const { getNodes, fitView } = useReactFlow();
+   // React Flow instance ref for controlling view
+  const { setNodes: flowSetNodes, getNodes, fitView } = useReactFlow();
   // State for the actual mind map data (to allow updating read status)
   const [localMindMapData, setLocalMindMapData] = useState<SidebarTopic[]>([]);
     // Update localMindMapData when mindMapData changes
@@ -1142,65 +1175,87 @@ function MindMapContent() {
       document.body.style.userSelect = '';
     };
   }, [isResizing, handleMouseMove, handleMouseUp]);
-    // Handle topic selection from sidebar
-  const handleTopicSelect = (topicId: string) => {
-    console.log('Topic selected:', topicId);
-    
-    // Set the selected node
-    setSelectedNode(topicId);
-    
-    // Find the node in the mind map and zoom in to focus on it
-    const nodes = getNodes();
-    const selectedNodeData = nodes.find(node => node.id === topicId);
-    if (selectedNodeData) {
-      fitView({ nodes: [{ id: topicId }], padding: 0.6, maxZoom: 1.5, duration: 800 });
-    }
-  };
-    // Handle subtopic selection from sidebar
-  const handleSubtopicSelect = (topicId: string, subtopicId: string) => {
-    console.log('Subtopic selected:', topicId, subtopicId);
+  // Helper to trace node ancestors to the root
+  const revealNodeAndAncestors = useCallback((nodeId: string) => {
+    setSelectedNode(nodeId);
 
-    // Set the selected node
-    setSelectedNode(subtopicId);
+    let ancestorIds: string[] = [];
+    flowSetNodes((nds) => {
+      // Trace path to root
+      const path: string[] = [];
+      let currentId: string | undefined = nodeId;
+      while (currentId) {
+        path.push(currentId);
+        const currentNode = nds.find(n => n.id === currentId);
+        currentId = currentNode?.data?.parentNode as string | undefined;
+      }
+      
+      ancestorIds = path.filter(id => id !== nodeId);
 
-    // First ensure parent topic is expanded, repositioning to prevent overlap
-    setNodes((nds) => {
       const updatedNodes = nds.map((node) => {
-        // Expand the parent node
-        if (node.id === topicId) {
-          return {
-            ...node,
-            data: { ...node.data, expanded: true }
-          };
-        }
-
-        // Show this subtopic and other subtopics of the parent
-        if (node.data.parentNode === topicId) {
+        // Expand all ancestors and make them visible
+        if (ancestorIds.includes(node.id)) {
           return {
             ...node,
             hidden: false,
+            data: { ...node.data, expanded: true }
+          };
+        }
+        // Make direct children of ancestors visible
+        if (ancestorIds.includes(node.data.parentNode as string)) {
+          return {
+            ...node,
+            hidden: false
           };
         }
         return node;
       });
 
-      return calculateDynamicPositions(updatedNodes, topicId, true);
+      // Recalculate positions for expanded ancestors from root down
+      let repositionedNodes = updatedNodes;
+      const sortedAncestors = [...ancestorIds].reverse();
+      sortedAncestors.forEach(ancId => {
+        repositionedNodes = calculateDynamicPositions(repositionedNodes, ancId, true);
+      });
+
+      return repositionedNodes;
     });
 
-    // Add parent to expanded topics
-    if (!expandedTopics.includes(topicId)) {
-      setExpandedTopics(prev => [...prev, topicId]);
+    // Update expandedTopics for sidebar consistency
+    if (ancestorIds.length > 0) {
+      setExpandedTopics(prev => {
+        const next = new Set([...prev, ...ancestorIds]);
+        return Array.from(next);
+      });
     }
 
-    // Zoom in to focus on the selected subtopic (with its parent for context)
-    // after a short delay to ensure nodes are rendered at their new positions
+    // Smoothly focus/zoom on the selected node
     setTimeout(() => {
-      const nodes = getNodes();
-      const selectedNodeData = nodes.find(node => node.id === subtopicId);
-      if (selectedNodeData && !selectedNodeData.hidden) {
-        fitView({ nodes: [{ id: topicId }, { id: subtopicId }], padding: 0.5, maxZoom: 1.5, duration: 800 });
+      const currentNodes = getNodes();
+      const targetNode = currentNodes.find(n => n.id === nodeId);
+      if (targetNode && !targetNode.hidden) {
+        const parentId = targetNode.data.parentNode as string | undefined;
+        const fitIds = parentId ? [nodeId, parentId] : [nodeId];
+        fitView({
+          nodes: fitIds.map(nid => ({ id: nid })),
+          padding: 0.5,
+          maxZoom: 1.5,
+          duration: 800
+        });
       }
-    }, 100);
+    }, 150);
+  }, [flowSetNodes, getNodes, fitView, setExpandedTopics]);
+
+  // Handle topic selection from sidebar
+  const handleTopicSelect = (topicId: string) => {
+    console.log('Topic selected:', topicId);
+    revealNodeAndAncestors(topicId);
+  };
+
+  // Handle subtopic selection from sidebar
+  const handleSubtopicSelect = (topicId: string, subtopicId: string) => {
+    console.log('Subtopic selected:', topicId, subtopicId);
+    revealNodeAndAncestors(subtopicId);
   };
   // Function to fetch detailed node description from the server
   const fetchNodeDescription = useCallback(async (nodeId: string) => {
@@ -2485,6 +2540,8 @@ More detailed content will be available soon with comprehensive explanations, eq
           onTopicSelect={handleTopicSelect}
           onSubtopicSelect={handleSubtopicSelect}
           onToggleReadStatus={handleToggleReadStatus}
+          expandedTopics={expandedTopics}
+          onExpandedTopicsChange={setExpandedTopics}
         />
       </div>
       
@@ -2507,7 +2564,7 @@ More detailed content will be available soon with comprehensive explanations, eq
               onNodeDragStop={handleNodeDragStop}
               fitView
               nodeTypes={nodeTypes}
-              className="bg-black"
+              className="bg-neutral-950"
               nodesDraggable={true}
               zoomOnScroll={true}
               panOnScroll={true}
@@ -2532,8 +2589,13 @@ More detailed content will be available soon with comprehensive explanations, eq
               onlyRenderVisibleElements={false}
               elevateNodesOnSelect={false}
             >
-              <Controls className="bg-neutral-800 text-white border-neutral-700" />
-              <Background color="#555" gap={16} size={1.5} />
+              <Background
+                variant={BackgroundVariant.Dots}
+                gap={20}
+                size={1.2}
+                color="#404040"
+              />
+              <CustomControls />
             </ReactFlow>
           </div>
         </div>
@@ -2912,7 +2974,7 @@ More detailed content will be available soon with comprehensive explanations, eq
         </div>
       )}
         {/* Floating Dock */}
-      <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
+      <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50 dark">
         <FloatingDock
           mobileClassName="translate-y-20"
           items={dockLinks}
