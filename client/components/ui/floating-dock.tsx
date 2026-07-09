@@ -91,7 +91,7 @@ const FloatingDockMobile = ({
                   </div>
                 </a>
               </motion.div>
-            ))}
+            ))} 
           </motion.div>
         )}
       </AnimatePresence>
