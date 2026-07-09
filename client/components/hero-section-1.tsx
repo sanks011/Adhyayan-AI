@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button1'
 import { AnimatedGroup } from '@/components/ui/animated-group'
 import { cn } from '@/lib/utils'
 
+import { Safari } from '@/components/ui/safari'
+
 const transitionVariants: any = {
     item: {
         hidden: {
@@ -174,14 +176,12 @@ export function HeroSection() {
                                 ...transitionVariants,
                             }}>
                             <div className="relative mt-3 sm:mt-4 md:mt-6 mx-auto max-w-5xl px-4 flex justify-center items-center">
-                                <div className="relative w-full overflow-hidden flex justify-center">
-                                    <Image
-                                        className="w-[95%] sm:w-[90%] md:w-[85%] h-auto object-contain select-none mix-blend-multiply dark:invert dark:mix-blend-screen -translate-y-4 sm:-translate-y-6 md:-translate-y-8"
-                                        src="/mindmap.png"
-                                        alt="Adhyayan Mindmap Preview"
-                                        width={2700}
-                                        height={1440}
-                                        priority
+                                <div className="w-full">
+                                    <Safari
+                                        url="adhyayan-ai.vercel.app"
+                                        imageSrc="/hero-mindmap.png"
+                                        className="shadow-2xl border border-neutral-800"
+                                        style={{ aspectRatio: "1203/621.5" }}
                                     />
                                 </div>
                             </div>
