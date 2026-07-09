@@ -84,7 +84,7 @@ const FloatingDockMobile = ({
                   <div className={cn(
                     "h-4 w-4",
                     activeItem === item.href
-                      ? "text-white"
+                      ? "text-white [&_svg]:!text-white"
                       : "text-neutral-500 dark:text-neutral-300"
                   )}>
                     {item.icon}
@@ -230,7 +230,7 @@ function IconContainer({
           style={{ width: widthIcon, height: heightIcon }}
           className={cn(
             "flex items-center justify-center",
-            isActive ? "text-white" : "text-neutral-400"
+            isActive ? "text-white [&_svg]:!text-white" : "text-neutral-400"
           )}
         >
           {icon}
