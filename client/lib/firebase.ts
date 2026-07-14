@@ -1,5 +1,12 @@
-import { FirebaseApp, initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, browserLocalPersistence, getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  browserPopupRedirectResolver,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -15,11 +22,16 @@ const firebaseConfig = {
 // Initialize Firebase App singleton
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firebase Auth singleton with explicit local persistence
-export const auth = getApps().length > 0 
-  ? getAuth(app) 
+// Use indexedDBLocalPersistence as the PRIMARY persistence layer.
+// Unlike browserLocalPersistence (cookies), IndexedDB is first-party storage —
+// it is never blocked by third-party cookie restrictions in Chrome, Firefox, etc.
+// This is the official Firebase fix for signInWithRedirect failing in browsers
+// that block cross-origin cookies (e.g. Chrome 115+ Tracking Protection).
+export const auth = getApps().length > 0
+  ? getAuth(app)
   : initializeAuth(app, {
-      persistence: browserLocalPersistence
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
     });
 
 export const googleProvider = new GoogleAuthProvider();
@@ -28,4 +40,3 @@ export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
 export default app;
-

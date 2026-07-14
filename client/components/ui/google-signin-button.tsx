@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, browserPopupRedirectResolver } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
@@ -20,19 +20,24 @@ const GoogleSignInButton = () => {
         typeof window !== 'undefined' &&
         /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-      if (isMobile) {
-        // On mobile use redirect — page will reload and getRedirectResult handles the rest
-        await signInWithRedirect(auth, googleProvider);
-        return; // page navigates away, no need to reset signingIn
+      // In production on Vercel, popups are blocked by Chrome/Firefox tracking protection.
+      // signInWithRedirect is more reliable there. Only use popup on localhost.
+      const isLocalhost =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+      if (isMobile || !isLocalhost) {
+        // Redirect flow: page navigates away to Google, then back.
+        // getRedirectResult() in AuthProvider handles the rest.
+        // With indexedDBLocalPersistence, this is immune to third-party cookie blocking.
+        await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
+        return; // page navigates away
       } else {
-        // Use signInWithPopup and explicitly handle the result.
-        // This avoids relying on onAuthStateChanged + cross-origin cookie relay,
-        // which fails when browsers block third-party cookies.
-        const result = await signInWithPopup(auth, googleProvider);
-        
+        // Localhost: popup works reliably, use it for a better dev experience.
+        const result = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
+
         if (result?.user) {
           setIsAuthenticating(true);
-          
           const idToken = await result.user.getIdToken(true);
           const userData = {
             uid: result.user.uid,
@@ -40,41 +45,36 @@ const GoogleSignInButton = () => {
             displayName: result.user.displayName,
             photoURL: result.user.photoURL,
           };
-          
           // Directly call login() to complete backend auth + redirect.
-          // This is the reliable path — it doesn't depend on onAuthStateChanged firing.
           await login(idToken, userData);
-          return; // login() handles navigation to /dashboard
+          return;
         }
       }
     } catch (error: any) {
       console.error('Error signing in:', error);
       const errorMsg = error?.message || '';
-      
-      // If popup was blocked fall back to redirect
+
       if (
         error.code === 'auth/popup-blocked' ||
         error.code === 'auth/cancelled-popup-request'
       ) {
-        toast.loading('Sign-in popup was blocked. Attempting to use secure redirect instead...', { 
-          id: 'auth-toast',
-          duration: 3000
-        });
+        // Popup was blocked — fall back to redirect
+        toast.loading('Redirecting to Google sign-in...', { id: 'auth-toast', duration: 3000 });
         try {
-          await signInWithRedirect(auth, googleProvider);
+          await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
           return;
         } catch (redirectError) {
           console.error('Redirect sign-in also failed:', redirectError);
-          toast.error('Authentication redirect failed. Please check browser settings.', { id: 'auth-toast' });
+          toast.error('Authentication failed. Please try again.', { id: 'auth-toast' });
         }
       } else if (
-        error.code === 'auth/web-storage-unsupported' || 
-        errorMsg.includes('storage') || 
+        error.code === 'auth/web-storage-unsupported' ||
+        errorMsg.includes('storage') ||
         errorMsg.includes('cookie')
       ) {
-        toast.error('Third-party cookies or storage are blocked. Please disable Brave Shields or enable cookies in Safari for this site.', { 
+        toast.error('Storage access is blocked. Please check your browser privacy settings.', {
           id: 'auth-toast',
-          duration: 6500 
+          duration: 6500,
         });
       } else {
         toast.error(`Sign in failed: ${error.message || 'Unknown error'}. Please try again.`, { id: 'auth-toast' });

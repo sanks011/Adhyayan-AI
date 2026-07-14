@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { User, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
+import { User, onAuthStateChanged, getRedirectResult, browserPopupRedirectResolver } from 'firebase/auth';
 import { auth } from './firebase';
 import { apiService } from './api';
 import { useRouter } from 'next/navigation';
@@ -212,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 2. Handle redirect sign-in result BEFORE subscribing to onAuthStateChanged.
       //    This is critical for mobile / popup-blocked flows.
       try {
-        const redirectResult = await getRedirectResult(auth);
+        const redirectResult = await getRedirectResult(auth, browserPopupRedirectResolver);
         if (redirectResult?.user && mounted) {
           console.log('Redirect sign-in completed, authenticating with backend…');
           setIsAuthenticating(true);
