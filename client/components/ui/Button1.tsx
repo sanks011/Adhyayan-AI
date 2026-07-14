@@ -48,7 +48,7 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, googleSignIn = false, children, ...props }, ref) => {
-    const { user, loading, isAuthenticated } = useAuth();
+    const { user, loading, isAuthenticated, login, setIsAuthenticating } = useAuth();
     const router = useRouter();
     
     const handleGoogleSignIn = async () => {
@@ -59,9 +59,21 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         if (isMobile) {
           await signInWithRedirect(auth, googleProvider);
         } else {
-          await signInWithPopup(auth, googleProvider);
+          const result = await signInWithPopup(auth, googleProvider);
+          
+          if (result?.user) {
+            setIsAuthenticating(true);
+            const idToken = await result.user.getIdToken(true);
+            const userData = {
+              uid: result.user.uid,
+              email: result.user.email,
+              displayName: result.user.displayName,
+              photoURL: result.user.photoURL,
+            };
+            await login(idToken, userData);
+            return;
+          }
         }
-        // The auth context will handle the backend authentication automatically
       } catch (error: any) {
         console.error('Error signing in:', error);
         if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {

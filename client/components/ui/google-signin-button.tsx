@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 
 const GoogleSignInButton = () => {
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, login, setIsAuthenticating } = useAuth();
   const router = useRouter();
   const [signingIn, setSigningIn] = useState(false);
 
@@ -25,8 +25,27 @@ const GoogleSignInButton = () => {
         await signInWithRedirect(auth, googleProvider);
         return; // page navigates away, no need to reset signingIn
       } else {
-        await signInWithPopup(auth, googleProvider);
-        // onAuthStateChanged in AuthProvider will fire and handle backend auth + redirect
+        // Use signInWithPopup and explicitly handle the result.
+        // This avoids relying on onAuthStateChanged + cross-origin cookie relay,
+        // which fails when browsers block third-party cookies.
+        const result = await signInWithPopup(auth, googleProvider);
+        
+        if (result?.user) {
+          setIsAuthenticating(true);
+          
+          const idToken = await result.user.getIdToken(true);
+          const userData = {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName,
+            photoURL: result.user.photoURL,
+          };
+          
+          // Directly call login() to complete backend auth + redirect.
+          // This is the reliable path — it doesn't depend on onAuthStateChanged firing.
+          await login(idToken, userData);
+          return; // login() handles navigation to /dashboard
+        }
       }
     } catch (error: any) {
       console.error('Error signing in:', error);
@@ -63,6 +82,7 @@ const GoogleSignInButton = () => {
       setSigningIn(false);
     }
   };
+
 
   const handleGetStarted = () => {
     router.push('/dashboard');

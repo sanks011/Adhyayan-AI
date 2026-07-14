@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 
 const GoogleSignInButton = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, login, setIsAuthenticating } = useAuth();
   const router = useRouter();
 
   const handleSignIn = async () => {
@@ -18,9 +18,21 @@ const GoogleSignInButton = () => {
       if (isMobile) {
         await signInWithRedirect(auth, googleProvider);
       } else {
-        await signInWithPopup(auth, googleProvider);
+        const result = await signInWithPopup(auth, googleProvider);
+        
+        if (result?.user) {
+          setIsAuthenticating(true);
+          const idToken = await result.user.getIdToken(true);
+          const userData = {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName,
+            photoURL: result.user.photoURL,
+          };
+          await login(idToken, userData);
+          return;
+        }
       }
-      // User will be automatically redirected by the auth state change
     } catch (error: any) {
       console.error('Error signing in:', error);
       if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
