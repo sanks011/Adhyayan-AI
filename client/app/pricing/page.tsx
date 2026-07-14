@@ -505,7 +505,7 @@ export default function PricingPage() {
           {/* Starry night sky background image */}
           <div className="absolute inset-0 -z-20 overflow-hidden">
             <Image
-              src="https://ik.imagekit.io/lrigu76hy/tailark/night-background.jpg?updatedAt=1745733451120"
+              src="/night-background.jpg"
               alt="background"
               fill
               className="object-cover opacity-60 pointer-events-none"
