@@ -52,104 +52,120 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const router = useRouter();
-    // Use a ref to track if we've already processed the initial auth state
-  const hasProcessedInitialAuth = useRef(false);
-  
-  // Function to update user profile
+
+  // Track whether we've already run the backend auth call for the current Firebase session.
+  // This prevents duplicate backend calls when both localStorage restore AND
+  // onAuthStateChanged fire for the same user.
+  const backendAuthDoneRef = useRef(false);
+
+  // ─── Update user profile ──────────────────────────────────────────────────
   const updateUserProfile = async (profileData: { displayName?: string; bio?: string }) => {
-    if (!auth.currentUser) {
-      throw new Error('No authenticated user');
-    }
+    if (!auth.currentUser) throw new Error('No authenticated user');
 
     try {
-      // Update Firebase profile if displayName changed
       if (profileData.displayName && profileData.displayName !== auth.currentUser.displayName) {
-        await import('firebase/auth').then(({ updateProfile }) => 
+        await import('firebase/auth').then(({ updateProfile }) =>
           updateProfile(auth.currentUser!, { displayName: profileData.displayName })
         );
       }
 
-      // Update local user state
-      setUser(prev => prev ? {
-        ...prev,
-        displayName: profileData.displayName || prev.displayName
-      } : null);
+      setUser(prev =>
+        prev ? { ...prev, displayName: profileData.displayName || prev.displayName } : null
+      );
 
-      // Update localStorage
       if (typeof window !== 'undefined') {
         const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const updatedUser = {
-          ...currentUser,
-          displayName: profileData.displayName || currentUser.displayName
-        };
+        const updatedUser = { ...currentUser, displayName: profileData.displayName || currentUser.displayName };
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        // Store profile data separately for other components to use
-        const profileSettings = JSON.parse(localStorage.getItem('adhyayan-profile') || '{}');
-        const updatedProfile = {
-          ...profileSettings,
-          ...profileData
-        };
-        localStorage.setItem('adhyayan-profile', JSON.stringify(updatedProfile));
-        
-        // Dispatch event to notify other components
-        window.dispatchEvent(new CustomEvent('userProfileUpdated', {
-          detail: updatedProfile
-        }));
-      }
 
-      console.log('User profile updated successfully');
+        const profileSettings = JSON.parse(localStorage.getItem('adhyayan-profile') || '{}');
+        localStorage.setItem('adhyayan-profile', JSON.stringify({ ...profileSettings, ...profileData }));
+
+        window.dispatchEvent(new CustomEvent('userProfileUpdated', { detail: { ...profileSettings, ...profileData } }));
+      }
     } catch (error) {
       console.error('Error updating user profile:', error);
       throw error;
     }
   };
 
-  // Function to refresh user data from Firebase
+  // ─── Refresh user data from Firebase ─────────────────────────────────────
   const refreshUserData = async () => {
-    if (auth.currentUser) {
-      try {
-        // Force refresh the user token to get latest data
-        await auth.currentUser.reload();
-        const refreshedUser = auth.currentUser;
-        
-        const userData = {
-          uid: refreshedUser.uid,
-          email: refreshedUser.email,
-          displayName: refreshedUser.displayName,
-          photoURL: refreshedUser.photoURL,
-        };
-          // Update stored user data with fresh data
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('user', JSON.stringify(userData));
-          localStorage.setItem('firebaseUserId', userData.uid); // Store Firebase UID separately for payment system
-        }
-        
-        setUser(userData);
-        console.log('User data refreshed:', userData);
-      } catch (error) {
-        console.error('Error refreshing user data:', error);
+    if (!auth.currentUser) return;
+    try {
+      await auth.currentUser.reload();
+      const refreshedUser = auth.currentUser;
+      const userData: CustomUser = {
+        uid: refreshedUser.uid,
+        email: refreshedUser.email,
+        displayName: refreshedUser.displayName,
+        photoURL: refreshedUser.photoURL,
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('firebaseUserId', userData.uid);
       }
+      setUser(userData);
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
     }
   };
+
+  // ─── Core backend auth call ───────────────────────────────────────────────
+  // Calls the backend, persists the JWT, and updates React state.
+  // Returns true on success, false on failure.
+  const authenticateWithBackend = async (firebaseUser: User): Promise<boolean> => {
+    try {
+      const idToken = await firebaseUser.getIdToken(/* forceRefresh */ true);
+      const userData: CustomUser = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName,
+        photoURL: firebaseUser.photoURL,
+      };
+
+      const response = await apiService.authenticateWithGoogle(idToken, userData);
+
+      if (!response?.token) {
+        console.error('Backend returned no token');
+        return false;
+      }
+
+      setUser(userData);
+      setIsAuthenticated(true);
+      backendAuthDoneRef.current = true;
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('firebaseUserId', userData.uid);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Backend authentication failed:', error);
+      return false;
+    }
+  };
+
+  // ─── login() — called explicitly by sign-in buttons ─────────────────────
   const login = async (idToken: string, userData: any) => {
     try {
       setIsAuthenticating(true);
       const response = await apiService.authenticateWithGoogle(idToken, userData);
+
+      if (!response?.token) {
+        throw new Error('No token received from server');
+      }
+
       setUser(userData);
       setIsAuthenticated(true);
-      
-      // Store Firebase UID for payment system
+      backendAuthDoneRef.current = true;
+
       if (typeof window !== 'undefined') {
         localStorage.setItem('firebaseUserId', userData.uid);
       }
-      
-      // Only redirect to dashboard if user is on the home page (fresh sign-in)
-      if (typeof window !== 'undefined' && window.location.pathname === '/') {
-        window.location.href = '/dashboard';
-      } else {
-        setIsAuthenticating(false);
-      }
+
+      // Navigate client-side — no full page reload
+      router.push('/dashboard');
     } catch (error) {
       setIsAuthenticating(false);
       console.error('Login failed:', error);
@@ -157,16 +173,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ─── logout() ─────────────────────────────────────────────────────────────
   const logout = async () => {
-    // apiService.logout() is fire-and-forget safe – it clears localStorage internally.
     await apiService.logout();
 
-    // Clear React state
     setUser(null);
     setIsAuthenticated(false);
-    hasProcessedInitialAuth.current = false;
+    backendAuthDoneRef.current = false;
 
-    // Sign out of Firebase
     if (auth.currentUser) {
       try {
         await auth.signOut();
@@ -176,103 +190,93 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ─── Main auth effect ─────────────────────────────────────────────────────
   useEffect(() => {
-    let isComponentMounted = true;
-    
-    // Check if user is already authenticated on page load
-    const storedUser = apiService.getStoredUser();
-    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    let mounted = true;
+
+    const initAuth = async () => {
+      // 1. Fast-path: restore from localStorage so the UI isn't blank.
+      const storedUser = apiService.getStoredUser();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
       if (storedUser && token) {
-      // Validate that stored user has required fields
-      if (storedUser.uid && (storedUser.email || storedUser.displayName)) {
         setUser(storedUser);
         setIsAuthenticated(true);
-        hasProcessedInitialAuth.current = true;
-        
-        // Ensure Firebase UID is stored for payment system
+        backendAuthDoneRef.current = true;
+
         if (typeof window !== 'undefined') {
           localStorage.setItem('firebaseUserId', storedUser.uid);
         }
-        
-        // Refresh user data in the background to ensure it's up to date
-        setTimeout(() => {
-          refreshUserData();
-        }, 1000);
-      } else {        // Clear invalid stored data
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          localStorage.removeItem('firebaseUserId'); // Clear Firebase UID
-        }
       }
-    }
 
-    // Handle redirect result to log success or catch errors
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          console.log('Redirect sign-in completed successfully');
+      // 2. Handle redirect sign-in result BEFORE subscribing to onAuthStateChanged.
+      //    This is critical for mobile / popup-blocked flows.
+      try {
+        const redirectResult = await getRedirectResult(auth);
+        if (redirectResult?.user && mounted) {
+          console.log('Redirect sign-in completed, authenticating with backend…');
+          setIsAuthenticating(true);
+          backendAuthDoneRef.current = false; // force a fresh backend call
+          const ok = await authenticateWithBackend(redirectResult.user);
+          if (ok && mounted) {
+            router.push('/dashboard');
+          }
+          if (mounted) setIsAuthenticating(false);
         }
-      })
-      .catch((error) => {
-        console.error('Error handling redirect result:', error);
+      } catch (redirectError) {
+        console.error('Error handling redirect result:', redirectError);
+        if (mounted) setIsAuthenticating(false);
+      }
+
+      // 3. Subscribe to Firebase auth state changes.
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (!mounted) return;
+
+        if (firebaseUser) {
+          // If we haven't done the backend auth yet for this Firebase user, do it now.
+          if (!backendAuthDoneRef.current) {
+            setIsAuthenticating(true);
+            const ok = await authenticateWithBackend(firebaseUser);
+            if (mounted) {
+              setIsAuthenticating(false);
+              if (ok && typeof window !== 'undefined' && window.location.pathname === '/') {
+                // Use client-side navigation — no full reload
+                router.push('/dashboard');
+              }
+            }
+          }
+        } else {
+          // Firebase says no user — clean up if we had one.
+          if (backendAuthDoneRef.current) {
+            setUser(null);
+            setIsAuthenticated(false);
+            backendAuthDoneRef.current = false;
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('authToken');
+              localStorage.removeItem('user');
+              localStorage.removeItem('firebaseUserId');
+            }
+          }
+        }
+
+        // Loading is resolved once Firebase has responded.
+        if (mounted) setLoading(false);
       });
 
-    // Listen to Firebase auth state changes
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!isComponentMounted) return;
-      
-      if (firebaseUser && !hasProcessedInitialAuth.current) {
-        // User just signed in via Firebase for the first time, authenticate with backend
-        setIsAuthenticating(true);
-        try {
-          const idToken = await firebaseUser.getIdToken();
-          const userData = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
-          };          // Call login function directly to avoid circular dependency
-          const response = await apiService.authenticateWithGoogle(idToken, userData);
-          setUser(userData);
-          setIsAuthenticated(true);
-          hasProcessedInitialAuth.current = true;
-          
-          // Store Firebase UID for payment system
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('firebaseUserId', userData.uid);
-          }
-          
-          // Only redirect to dashboard if user is on the home page (fresh sign-in)
-          if (typeof window !== 'undefined' && window.location.pathname === '/') {
-            window.location.href = '/dashboard';
-          } else {
-            setIsAuthenticating(false);
-          }
-        } catch (error) {
-          console.error('Backend authentication failed:', error);
-          setIsAuthenticating(false);
-        }
-      } else if (!firebaseUser && hasProcessedInitialAuth.current) {
-        // User signed out of Firebase, clean up our auth state
-        setUser(null);
-        setIsAuthenticated(false);
-        hasProcessedInitialAuth.current = false;        // Clear local storage
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          localStorage.removeItem('firebaseUserId'); // Clear Firebase UID
-        }
-      }
-      
-      if (isComponentMounted) {
-        setLoading(false);
-      }
-    });    return () => {
-      isComponentMounted = false;
-      unsubscribe();
+      return unsubscribe;
     };
-  }, []); // Remove router dependency
+
+    let unsubscribeAuth: (() => void) | undefined;
+    initAuth().then((unsub) => {
+      if (unsub) unsubscribeAuth = unsub;
+    });
+
+    return () => {
+      mounted = false;
+      if (unsubscribeAuth) unsubscribeAuth();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const value = {
     user,
     loading,
@@ -281,8 +285,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthenticating,
     login,
     logout,
-    refreshUserData, // Expose this function for manual refresh if needed
-    updateUserProfile, // Add the new update function
+    refreshUserData,
+    updateUserProfile,
   };
 
   return (
@@ -295,18 +299,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 const AuthLoadingOverlay = () => {
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md"
     >
-      <motion.div 
+      <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
         className="flex flex-col items-center space-y-6"
       >
-        {/* Lemniscate Bloom Loader */}
         <div className="relative w-48 h-48">
           <LemniscateBloom
             className="w-full h-full text-cyan-400"
@@ -319,14 +322,10 @@ const AuthLoadingOverlay = () => {
             color="currentColor"
           />
         </div>
-        
+
         <div className="space-y-1 text-center">
-          <h3 className="text-white font-medium text-lg tracking-wide">
-            Authenticating
-          </h3>
-          <p className="text-neutral-400 text-sm">
-            Setting up your secure session...
-          </p>
+          <h3 className="text-white font-medium text-lg tracking-wide">Authenticating</h3>
+          <p className="text-neutral-400 text-sm">Setting up your secure session...</p>
         </div>
       </motion.div>
     </motion.div>

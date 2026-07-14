@@ -1,35 +1,47 @@
 "use client";
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
-import { signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 
 const GoogleSignInButton = () => {
-  const { user, loading, isAuthenticated, logout } = useAuth();
+  const { loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const [signingIn, setSigningIn] = useState(false);
 
   const handleSignIn = async () => {
+    if (signingIn) return;
+    setSigningIn(true);
     try {
-      const isMobile = typeof window !== 'undefined' && 
+      const isMobile =
+        typeof window !== 'undefined' &&
         /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      
+
       if (isMobile) {
+        // On mobile use redirect — page will reload and getRedirectResult handles the rest
         await signInWithRedirect(auth, googleProvider);
+        return; // page navigates away, no need to reset signingIn
       } else {
         await signInWithPopup(auth, googleProvider);
+        // onAuthStateChanged in AuthProvider will fire and handle backend auth + redirect
       }
-      // The auth context will handle the backend authentication automatically
     } catch (error: any) {
       console.error('Error signing in:', error);
-      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+      // If popup was blocked fall back to redirect
+      if (
+        error.code === 'auth/popup-blocked' ||
+        error.code === 'auth/cancelled-popup-request'
+      ) {
         try {
           await signInWithRedirect(auth, googleProvider);
+          return;
         } catch (redirectError) {
-          console.error('Error signing in with redirect:', redirectError);
+          console.error('Redirect sign-in also failed:', redirectError);
         }
       }
+      setSigningIn(false);
     }
   };
 
@@ -37,42 +49,25 @@ const GoogleSignInButton = () => {
     router.push('/dashboard');
   };
 
-  // Show loading state
-  if (loading) {
-    return (
-      <StyledWrapper>
-        <div className="button-container">
-          <button className="google-sign-in-btn" disabled>
-            <span className="text">Loading...</span>
-          </button>
-        </div>
-      </StyledWrapper>
-    );
-  }
+  const isLoading = loading || signingIn;
 
   return (
     <StyledWrapper>
       <div className="button-container">
-        {loading ? (
+        {isLoading ? (
           <button className="google-sign-in-btn" disabled>
-            <span className="text">Loading...</span>
+            <span className="text">{signingIn ? 'Signing in…' : 'Loading…'}</span>
           </button>
         ) : isAuthenticated ? (
-          <button 
-            className="google-sign-in-btn"
-            onClick={handleGetStarted}
-          >
+          <button className="google-sign-in-btn" onClick={handleGetStarted}>
             <svg className="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M13 7L11 7L11 11L7 11L7 13L11 13L11 17L13 17L13 13L17 13L17 11L13 11L13 7Z" fill="currentColor"/>
-              <path fillRule="evenodd" clipRule="evenodd" d="M12 1C5.925 1 1 5.925 1 12C1 18.075 5.925 23 12 23C18.075 23 23 18.075 23 12C23 5.925 18.075 1 12 1ZM3 12C3 7.029 7.029 3 12 3C16.971 3 21 7.029 21 12C21 16.971 16.971 21 12 21C7.029 21 3 16.971 3 12Z" fill="currentColor"/>
+              <path d="M13 7L11 7L11 11L7 11L7 13L11 13L11 17L13 17L13 13L17 13L17 11L13 11L13 7Z" fill="currentColor" />
+              <path fillRule="evenodd" clipRule="evenodd" d="M12 1C5.925 1 1 5.925 1 12C1 18.075 5.925 23 12 23C18.075 23 23 18.075 23 12C23 5.925 18.075 1 12 1ZM3 12C3 7.029 7.029 3 12 3C16.971 3 21 7.029 21 12C21 16.971 16.971 21 12 21C7.029 21 3 16.971 3 12Z" fill="currentColor" />
             </svg>
             <span className="text">Get Started</span>
           </button>
         ) : (
-          <button 
-            className="google-sign-in-btn"
-            onClick={handleSignIn}
-          >
+          <button className="google-sign-in-btn" onClick={handleSignIn}>
             <svg className="icon" viewBox="-3 0 262 262" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid" fill="#000000">
               <g id="SVGRepo_bgCarrier" strokeWidth={0} />
               <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
