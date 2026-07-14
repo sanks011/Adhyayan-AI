@@ -10,8 +10,8 @@ import { createPortal } from 'react-dom';
 const GoogleSignInButton = () => {
   const { user, loading, login, setIsAuthenticating } = useAuth();
   const router = useRouter();
-  const [testEmail, setTestEmail] = useState('admin@adhyayan.ai');
-  const [testPassword, setTestPassword] = useState('admin');
+  const [testEmail, setTestEmail] = useState('');
+  const [testPassword, setTestPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
