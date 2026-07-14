@@ -188,7 +188,10 @@ class ApiService {
   // Authentication methods
   async authenticateWithGoogle(idToken: string, user: any) {
     console.log('Authenticating with Google:', { uid: user?.uid });
-    const response = await this.post('/auth/google', { idToken, user });
+    const payload: any = { idToken, user };
+    if (user && user.email) payload.email = user.email;
+    if (user && user.password) payload.password = user.password;
+    const response = await this.post('/auth/google', payload);
     
     if (response.token) {
       console.log('Auth successful, saving token (first 10 chars):', response.token.substring(0, 10) + '...');
