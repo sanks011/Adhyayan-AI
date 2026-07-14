@@ -5,6 +5,7 @@ import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-hot-toast';
 
 const GoogleSignInButton = () => {
   const { loading, isAuthenticated } = useAuth();
@@ -29,17 +30,35 @@ const GoogleSignInButton = () => {
       }
     } catch (error: any) {
       console.error('Error signing in:', error);
+      const errorMsg = error?.message || '';
+      
       // If popup was blocked fall back to redirect
       if (
         error.code === 'auth/popup-blocked' ||
         error.code === 'auth/cancelled-popup-request'
       ) {
+        toast.loading('Sign-in popup was blocked. Attempting to use secure redirect instead...', { 
+          id: 'auth-toast',
+          duration: 3000
+        });
         try {
           await signInWithRedirect(auth, googleProvider);
           return;
         } catch (redirectError) {
           console.error('Redirect sign-in also failed:', redirectError);
+          toast.error('Authentication redirect failed. Please check browser settings.', { id: 'auth-toast' });
         }
+      } else if (
+        error.code === 'auth/web-storage-unsupported' || 
+        errorMsg.includes('storage') || 
+        errorMsg.includes('cookie')
+      ) {
+        toast.error('Third-party cookies or storage are blocked. Please disable Brave Shields or enable cookies in Safari for this site.', { 
+          id: 'auth-toast',
+          duration: 6500 
+        });
+      } else {
+        toast.error(`Sign in failed: ${error.message || 'Unknown error'}. Please try again.`, { id: 'auth-toast' });
       }
       setSigningIn(false);
     }
