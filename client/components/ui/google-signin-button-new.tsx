@@ -176,14 +176,14 @@ const GoogleSignInButton = () => {
             <div className="w-full flex flex-col gap-3 mt-2">
               <input 
                 type="email"
-                placeholder="Email (e.g. admin@adhyayan.ai)"
+                placeholder="Email"
                 value={testEmail}
                 onChange={(e) => setTestEmail(e.target.value)}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-neutral-500 transition-colors"
               />
               <input 
                 type="password"
-                placeholder="Password (e.g. admin)"
+                placeholder="Password"
                 value={testPassword}
                 onChange={(e) => setTestPassword(e.target.value)}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-neutral-500 transition-colors"
