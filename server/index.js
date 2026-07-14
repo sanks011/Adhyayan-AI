@@ -477,6 +477,8 @@ app.post("/api/auth/google", async (req, res) => {
       email: decodedToken.email || "",
       name: decodedToken.name || "",
       picture: decodedToken.picture || "",
+      displayName: decodedToken.name || "",
+      photoURL: decodedToken.picture || "",
     };
 
     // If MongoDB is connected, make sure the user exists in our database
@@ -504,14 +506,20 @@ app.post("/api/auth/google", async (req, res) => {
         await db.collection("users").insertOne(newUser);
         console.log("New user created in database with 50 Gyan Points:", decodedToken.uid);
       } else {
-        // Update last login time
+        // Update last login time and sync name/avatar
         await db
           .collection("users")
           .updateOne(
             { uid: decodedToken.uid },
-            { $set: { lastLogin: new Date() } }
+            { 
+              $set: { 
+                lastLogin: new Date(),
+                displayName: decodedToken.name || "",
+                photoURL: decodedToken.picture || ""
+              } 
+            }
           );
-        console.log("User login time updated:", decodedToken.uid);
+        console.log("User login time and profile synchronized in DB:", decodedToken.uid);
       }
     }
 

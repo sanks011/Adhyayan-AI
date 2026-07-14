@@ -168,6 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Navigate client-side — no full page reload
       router.push('/dashboard');
+      setIsAuthenticating(false);
     } catch (error) {
       setIsAuthenticating(false);
       console.error('Login failed:', error);

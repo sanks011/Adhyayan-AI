@@ -194,9 +194,15 @@ class ApiService {
     const response = await this.post('/auth/google', payload);
     
     if (response.token) {
+      const mappedUser = {
+        ...response.user,
+        displayName: response.user.displayName || response.user.name,
+        photoURL: response.user.photoURL || response.user.picture,
+      };
       console.log('Auth successful, saving token (first 10 chars):', response.token.substring(0, 10) + '...');
       localStorage.setItem('authToken', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      localStorage.setItem('user', JSON.stringify(mappedUser));
+      response.user = mappedUser;
     } else {
       console.error('No token received from server during authentication');
     }
@@ -243,6 +249,15 @@ class ApiService {
       if (userData) {
         try {
           const parsedUser = JSON.parse(userData);
+          if (parsedUser) {
+            if (parsedUser.uid === 'test-admin-uid-12345') {
+              parsedUser.displayName = 'Admin';
+              parsedUser.photoURL = '/admin-panda.png';
+            } else {
+              if (parsedUser.name && !parsedUser.displayName) parsedUser.displayName = parsedUser.name;
+              if (parsedUser.picture && !parsedUser.photoURL) parsedUser.photoURL = parsedUser.picture;
+            }
+          }
           // Validate that the user object has required fields
           if (parsedUser && parsedUser.uid && (parsedUser.email || parsedUser.displayName)) {
             return parsedUser;
